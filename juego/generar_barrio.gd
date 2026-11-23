@@ -58,6 +58,12 @@ var _fase_auto := 0
 var _mision_ok := false
 var _tiempo := 0.0
 var _dir_jugador := 0.0
+# Media vuelta al pulsar «atrás» a pie o nadando (nada de andar
+# hacia atrás): rumbo objetivo, si está girando y la tecla el frame
+# anterior, para detectar la pulsación nueva.
+var _vuelta_obj := 0.0
+var _en_vuelta := false
+var _atras_ant := false
 var _vista_aerea := false
 var _modo_libre := true
 # Interfaz tipo «layout de móvil»: minimapa, teléfono, banner de encargo
@@ -4496,6 +4502,22 @@ func _probar_bici() -> void:
 	ev2.pressed = false
 	Input.parse_input_event(ev2)
 	pasa = pasa and _pill_vel != null and _pill_vel.visible and _hud_vel.text.contains("km/h")
+	# Sin marcha atrás en bici: con S pisado frena hasta 0 y de ahí
+	# no pasa, por mucho que insistas.
+	var ev3 := InputEventKey.new()
+	ev3.keycode = KEY_S
+	ev3.pressed = true
+	Input.parse_input_event(ev3)
+	await get_tree().process_frame
+	var min_vel := 99.0
+	for f_s in 40:
+		_conducir(0.1)
+		min_vel = minf(min_vel, _coche_vel)
+	pasa = pasa and min_vel >= 0.0 and _coche_vel == 0.0
+	var ev4 := InputEventKey.new()
+	ev4.keycode = KEY_S
+	ev4.pressed = false
+	Input.parse_input_event(ev4)
 	# La de montaña: se compra, cuenta como bici (pedaleando, sin
 	# motor) y corre más que la de paseo.
 	_dinero = 1000
@@ -5103,15 +5125,32 @@ func _andar(delta: float) -> void:
 			_dir_jugador = atan2(vel.x, vel.z)
 		else:
 			# Teclado RELATIVO, como al conducir: izquierda y derecha
-			# GIRAN al personaje; arriba anda hacia donde mira y abajo
-			# retrocede sin girarse. La cámara va siempre tras él.
+			# GIRAN al personaje; arriba anda hacia donde mira. Abajo
+			# NO es marcha atrás (una persona no anda hacia atrás):
+			# al pulsarlo, el personaje se da media vuelta y anda en
+			# sentido contrario. La cámara va siempre tras él.
 			var giro := float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT))
-			var avance := float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)) - float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
+			var adelante := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
+			var atras := Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)
 			if giro != 0.0:
 				_dir_jugador = wrapf(_dir_jugador + giro * 2.6 * delta, -PI, PI)
-			if avance != 0.0:
-				var frente := Vector3(sin(_dir_jugador), 0, cos(_dir_jugador))
-				vel = frente * ((10.2 if _corriendo else 6.0) if avance > 0.0 else -3.4)
+				_en_vuelta = false
+			var frente := Vector3(sin(_dir_jugador), 0, cos(_dir_jugador))
+			if adelante:
+				_en_vuelta = false
+				vel = frente * (10.2 if _corriendo else 6.0)
+			elif atras:
+				if not _en_vuelta and not _atras_ant:
+					_en_vuelta = true
+					_vuelta_obj = wrapf(_dir_jugador + PI, -PI, PI)
+				if _en_vuelta:
+					var dif_v := wrapf(_vuelta_obj - _dir_jugador, -PI, PI)
+					_dir_jugador = wrapf(_dir_jugador + clampf(dif_v, -10.0 * delta, 10.0 * delta), -PI, PI)
+					if absf(dif_v) < 0.08:
+						_en_vuelta = false
+				else:
+					vel = frente * (10.2 if _corriendo else 6.0)
+			_atras_ant = atras
 	_mover(_jugador, vel * delta, 0.4)
 	var andando := vel.length() > 0.1
 	if andando:
@@ -5158,11 +5197,27 @@ func _nadar(delta: float) -> void:
 		_dir_jugador = atan2(vel.x, vel.z)
 	else:
 		var giro := float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT))
-		var avance := float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)) - float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
+		var adelante := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
+		var atras := Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)
 		if giro != 0.0:
 			_dir_jugador = wrapf(_dir_jugador + giro * 2.2 * delta, -PI, PI)
-		if avance != 0.0:
-			vel = Vector3(sin(_dir_jugador), 0, cos(_dir_jugador)) * (1.7 if avance > 0.0 else -0.9)
+			_en_vuelta = false
+		if adelante:
+			_en_vuelta = false
+			vel = Vector3(sin(_dir_jugador), 0, cos(_dir_jugador)) * 1.7
+		elif atras:
+			# Tampoco se nada hacia atrás: media vuelta y a bracear.
+			if not _en_vuelta and not _atras_ant:
+				_en_vuelta = true
+				_vuelta_obj = wrapf(_dir_jugador + PI, -PI, PI)
+			if _en_vuelta:
+				var dif_v := wrapf(_vuelta_obj - _dir_jugador, -PI, PI)
+				_dir_jugador = wrapf(_dir_jugador + clampf(dif_v, -7.0 * delta, 7.0 * delta), -PI, PI)
+				if absf(dif_v) < 0.08:
+					_en_vuelta = false
+			else:
+				vel = Vector3(sin(_dir_jugador), 0, cos(_dir_jugador)) * 1.7
+		_atras_ant = atras
 	var nueva := p + Vector2(vel.x, vel.z) * delta
 	if not _choca(nueva, 0.4):
 		_jugador.position.x = nueva.x
@@ -5257,9 +5312,12 @@ func _conducir(delta: float) -> void:
 	elif acel < 0.0:
 		if _coche_vel > 0.5:
 			_coche_vel += acel * float(st["freno"]) * delta
+		elif _es_bici():
+			# En bici no hay marcha atrás: el freno solo detiene.
+			_coche_vel = move_toward(_coche_vel, 0.0, float(st["freno"]) * delta)
 		else:
 			_coche_vel += acel * float(st["acel"]) * 0.6 * delta
-	_coche_vel = clampf(_coche_vel, -float(st["vmax"]) * 0.35, float(st["vmax"]))
+	_coche_vel = clampf(_coche_vel, 0.0 if _es_bici() else -float(st["vmax"]) * 0.35, float(st["vmax"]))
 	if _pill_vel != null:
 		_pill_vel.visible = true
 		_hud_vel.text = str(int(round(absf(_coche_vel) * 3.6))) + " km/h"
@@ -6762,7 +6820,7 @@ func _crear_interfaz() -> void:
 	_ayuda_dinero.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
 	va.add_child(_ayuda_dinero)
 	var cuerpo := Label.new()
-	cuerpo.text = "Estás en Logroño. Gana dinero haciendo encargos.\n\n1. A pie, WASD o flechas: arriba anda hacia donde miras, izquierda y derecha giras, abajo retrocedes.\n2. Tecla T o el teléfono de arriba: encargos, elige uno.\n3. Sigue la ruta azul del minimapa hasta el pilar naranja.\n4. Tecla E junto a tu coche rojo: a conducir.\n5. Al llegar cobras solo. Repartos: recoger y entregar.\n6. Tab: mapa grande con tu recorrido.\n\nMóvil: joystick para andar; conduciendo, volante y pedales.\nMando de Play: stick para andar y conducir; botón cruz: coche; botón triángulo: encargos; Options: mapa.\n\nEspacio (a pie): correr. F: sentarte en un banco. Se guarda solo. H: ver esta ayuda otra vez.\nCoches: compra en el concesionario AutoRioja (Av. de la Paz), repara y mejora en el Taller Ebro (centro) y cambia de coche en tu garaje (en casa, Miguel Villanueva).\nInteriores: entra por las puertas en tu piso (la cama es para dormir), el Ayuntamiento, el gimnasio, la peluquería, la tienda de ropa y la panadería."
+	cuerpo.text = "Estás en Logroño. Gana dinero haciendo encargos.\n\n1. A pie, WASD o flechas: arriba anda hacia donde miras, izquierda y derecha giras, abajo te das la vuelta y andas en sentido contrario (nadie anda marcha atrás; en bici tampoco hay marcha atrás: el freno solo para).\n2. Tecla T o el teléfono de arriba: encargos, elige uno.\n3. Sigue la ruta azul del minimapa hasta el pilar naranja.\n4. Tecla E junto a tu coche rojo: a conducir.\n5. Al llegar cobras solo. Repartos: recoger y entregar.\n6. Tab: mapa grande con tu recorrido.\n\nMóvil: joystick para andar; conduciendo, volante y pedales.\nMando de Play: stick para andar y conducir; botón cruz: coche; botón triángulo: encargos; Options: mapa.\n\nEspacio (a pie): correr. F: sentarte en un banco. Se guarda solo. H: ver esta ayuda otra vez.\nCoches: compra en el concesionario AutoRioja (Av. de la Paz), repara y mejora en el Taller Ebro (centro) y cambia de coche en tu garaje (en casa, Miguel Villanueva).\nInteriores: entra por las puertas en tu piso (la cama es para dormir), el Ayuntamiento, el gimnasio, la peluquería, la tienda de ropa y la panadería."
 	cuerpo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cuerpo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cuerpo.add_theme_font_size_override("font_size", 17)
@@ -11525,7 +11583,8 @@ func _probar_encuentro() -> void:
 
 func _probar_controles() -> void:
 	# Controles relativos a pie: A/D GIRAN (no desplazan), W anda hacia
-	# donde mira el personaje y S retrocede sin cambiar el rumbo.
+	# donde mira el personaje y S NO retrocede: se da media vuelta y
+	# anda en sentido contrario, como una persona.
 	if _ayuda_abierta:
 		_cerrar_ayuda()
 	_jugador.position = Vector3(-259, _altura(-259, 271) + 0.95, 271)
@@ -11558,7 +11617,8 @@ func _probar_controles() -> void:
 	pulsar.call(KEY_S, false)
 	var desp2 := _jugador.position - pos1
 	desp2.y = 0
-	var re_ok := desp2.dot(frente) < -2.0 and absf(wrapf(_dir_jugador - rumbo_antes, -PI, PI)) < 0.05
+	var frente2 := Vector3(sin(_dir_jugador), 0, cos(_dir_jugador))
+	var re_ok := absf(absf(wrapf(_dir_jugador - rumbo_antes, -PI, PI)) - PI) < 0.3 and desp2.dot(frente2) > 2.0
 	print("CONTROLES_OK giro=", giro_ok, " avance=", av_ok, " retro=", re_ok)
 	get_tree().quit()
 
@@ -11656,6 +11716,14 @@ func _capturar_si_toca() -> void:
 			print("RADAR_OK multa=", antes_r - _dinero)
 		get_tree().quit()
 		return
+	elif args.has("capturar_farmacia"):
+		# La esquina de la Farmacia María Cristina (-239.6, 177.2),
+		# vista desde el suroeste como en la captura de Jon.
+		_construir_tile(_tile_de(Vector2(-240, 177)))
+		_construir_tile(_tile_de(Vector2(-240, 177)) + Vector2i(-1, 0))
+		var y_f := _altura(-242.0, 176.0)
+		_cam.look_at_from_position(Vector3(-242.0, y_f + 42.0, 175.9), Vector3(-242.0, y_f, 176.0), Vector3.UP)
+		nombre = "farmacia.png"
 	elif args.has("capturar_cebra"):
 		# Cruce real de 6 tramos y calle de 10 m (verificado en los datos)
 		var nc := Vector2(189, 143)
