@@ -3828,6 +3828,7 @@ var _rastro: Array = []
 var _peatones: Array = []
 var _estaticos: Array = []
 var _perros: Array = []
+var _tic_vis := 0.0
 var _columpios: Array = []
 var _balon_gal: Dictionary = {}
 var _gallarza_verde := 0
@@ -4969,6 +4970,10 @@ func _physics_process(delta: float) -> void:
 	_mover_palomas(delta)
 	_mover_trafico(delta)
 	_mover_buses(delta)
+	_tic_vis += delta
+	if _tic_vis > 0.25:
+		_tic_vis = 0.0
+		_actualizar_visibilidad()
 	_actualizar_especiales(delta)
 	_actualizar_encuentros(delta)
 	_mover_encuentro(delta)
@@ -10503,6 +10508,35 @@ func _hacer_pajaro() -> Dictionary:
 	raiz.add_child(ad)
 	return {"raiz": raiz, "ai": ai, "ad": ad}
 
+func _actualizar_visibilidad() -> void:
+	# Presupuesto de objetos de la web (incidentes 21/22-nov): WebGL
+	# deja de dibujar el mundo al pasar de ~1.000 objetos DIBUJADOS.
+	# La ciudad puede tener toda la vida que quiera, pero solo se
+	# dibuja lo que está cerca del jugador, como las baldosas en
+	# streaming o los rótulos por proximidad. La lógica (caminar,
+	# parar, esperar) sigue corriendo igual para todos.
+	var ref := _bus.position if _en_bus else (_coche.position if _en_coche else _jugador.position)
+	var r_per := 150.0 * 150.0
+	var r_veh := 300.0 * 300.0
+	for peat in _peatones:
+		var rz: Node3D = peat["raiz"]
+		rz.visible = rz.position.distance_squared_to(ref) < r_per
+	for est in _estaticos:
+		var rz2: Node3D = est["raiz"]
+		rz2.visible = rz2.position.distance_squared_to(ref) < r_per
+	for t in _trafico:
+		var nd: Node3D = t["nodo3d"]
+		nd.visible = nd.position.distance_squared_to(ref) < r_veh
+	for bu in _buses_urbanos:
+		var nb: Node3D = bu["nodo3d"]
+		nb.visible = nb.position.distance_squared_to(ref) < r_veh
+	for col in _columpios:
+		var piv: Node3D = col["pivote"]
+		piv.visible = piv.position.distance_squared_to(ref) < 200.0 * 200.0
+	if not _balon_gal.is_empty():
+		var bn: Node3D = _balon_gal["nodo"]
+		bn.visible = bn.position.distance_squared_to(ref) < 200.0 * 200.0
+
 func _mover_peatones(delta: float) -> void:
 	for peat in _peatones:
 		var raiz: Node3D = peat["raiz"]
@@ -11871,6 +11905,25 @@ func _capturar_si_toca() -> void:
 		_probar_ra()
 	elif args.has("probar_decathlon"):
 		_probar_decathlon()
+		return
+	elif args.has("censar"):
+		# Censo de objetos para el presupuesto web (incidente 21/22-nov:
+		# WebGL deja de dibujar al pasar de ~1.000 objetos en el mapa).
+		var pila: Array = [get_tree().root]
+		var n_mi := 0
+		var n_lab := 0
+		var n_nodos := 0
+		while not pila.is_empty():
+			var nd: Node = pila.pop_back()
+			n_nodos += 1
+			if nd is MeshInstance3D:
+				n_mi += 1
+			elif nd is Label3D:
+				n_lab += 1
+			for h in nd.get_children():
+				pila.append(h)
+		print("CENSO_OK mesh=", n_mi, " label3d=", n_lab, " nodos=", n_nodos, " peatones=", _peatones.size(), " trafico=", _trafico.size(), " buses=", _buses_urbanos.size())
+		get_tree().quit()
 		return
 	elif args.has("probar_berceo"):
 		_probar_berceo()
