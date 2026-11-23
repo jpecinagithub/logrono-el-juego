@@ -1,0 +1,696 @@
+{
+ "lineas_sentido": [
+  {
+   "ref": "1",
+   "nombre": "1 %Hospital %San %Pedro-Lardero",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 116
+  },
+  {
+   "ref": "1",
+   "nombre": "1 %Lardero %- %Hospital %San %Pedro",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 116
+  },
+  {
+   "ref": "10",
+   "nombre": "10 %El %Arco-Hospital %S. %Pedro",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 181
+  },
+  {
+   "ref": "10",
+   "nombre": "10 %Hospital %S.Pedro %- %El %Arco",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 183
+  },
+  {
+   "ref": "11",
+   "nombre": "11 %Hospital %San %Pedro %- �ntro",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 52
+  },
+  {
+   "ref": "11",
+   "nombre": "11 �ntro-Hospital %San %Pedro",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 46
+  },
+  {
+   "ref": "2",
+   "nombre": "2 %Varea %- %Yagüe",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 103
+  },
+  {
+   "ref": "2",
+   "nombre": "2 %Yagüe-Varea",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 107
+  },
+  {
+   "ref": "3",
+   "nombre": "3 %Las %Norias %- %Villamedina",
+   "desde": "Las %Norias",
+   "hasta": "Villamedina",
+   "operador": "AULOSA",
+   "miembros": 185
+  },
+  {
+   "ref": "3",
+   "nombre": "3 %Villamediana %- %Las %Norias",
+   "desde": "Villamediana � %Iregua",
+   "hasta": "Las %Norias",
+   "operador": "AULOSA",
+   "miembros": 189
+  },
+  {
+   "ref": "4",
+   "nombre": "4 %Palacio � %Congresos-Pradoviejo",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 108
+  },
+  {
+   "ref": "4",
+   "nombre": "4 %Pradoviejo %-Palacio � %Congresos",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 137
+  },
+  {
+   "ref": "5",
+   "nombre": "5 %Madre � %Dios-Valdegastea",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 78
+  },
+  {
+   "ref": "5",
+   "nombre": "5 %Valdegastea %- %Madre � %Dios",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 103
+  },
+  {
+   "ref": "6",
+   "nombre": "6 %El %Cortijo %- �ntro",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 70
+  },
+  {
+   "ref": "6",
+   "nombre": "6 �ntro %-El %Cortijo",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 66
+  },
+  {
+   "ref": "7",
+   "nombre": "7 %El %Arco-Polígono �ntabria",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 114
+  },
+  {
+   "ref": "7",
+   "nombre": "7 %Labradores %- %Polígono �ntabria",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 68
+  },
+  {
+   "ref": "7",
+   "nombre": "7 %Polígono �ntabria %-El %Arco",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 111
+  },
+  {
+   "ref": "7",
+   "nombre": "7 %Polígono �ntabria %-Labradores",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 68
+  },
+  {
+   "ref": "9",
+   "nombre": "9 %Las %Norias %- %Pradoviejo",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 162
+  },
+  {
+   "ref": "9",
+   "nombre": "9 %Pradoviejo-Las %Norias",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 161
+  },
+  {
+   "ref": "A10",
+   "nombre": "A10 %Haro %!92% %Logroño",
+   "desde": "Haro",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 248
+  },
+  {
+   "ref": "A10",
+   "nombre": "A10 %Logroño %!92% %Haro",
+   "desde": "Logroño",
+   "hasta": "Haro",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 269
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Elciego %!92% %Logroño",
+   "desde": "Elciego",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 114
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Logroño %!92% %Elciego",
+   "desde": "Logroño",
+   "hasta": "Elciego",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 110
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Logroño %!92% %Laguardia %!92% %Villabuena � %Álava %/ %Eskuernaga",
+   "desde": "Logroño",
+   "hasta": "Villabuena � %Álava/Eskuernaga",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 144
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Logroño %!92% %Villabuena � %Álava",
+   "desde": "Logroño",
+   "hasta": "Villabuena � %Álava/Eskuernaga",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 129
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Villabuena � %Álava %/ %Eskuernaga %!92% %Laguardia %!92% %Logroño",
+   "desde": "Villabuena � %Álava/Eskuernaga",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 153
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Villabuena � %Álava %/ %Eskuernaga %!92% %Logroño",
+   "desde": "Villabuena � %Álava/Eskuernaga",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 132
+  },
+  {
+   "ref": "A17",
+   "nombre": "A17 %Bilbao %!92% %Haro %!92% %Logroño %(Autopista)",
+   "desde": "Bilbao",
+   "hasta": "Logroño",
+   "operador": "Autobuses %Cuadra",
+   "miembros": 279
+  },
+  {
+   "ref": "A17",
+   "nombre": "A17 %Bilbao %!92% %Haro %!92% %Logroño %(Por %pueblos)",
+   "desde": "Bilbao",
+   "hasta": "Logroño",
+   "operador": "Autobuses %Cuadra",
+   "miembros": 477
+  },
+  {
+   "ref": "A17",
+   "nombre": "A17 %Bilbao %!92% %Logroño %(Directo)",
+   "desde": "Bilbao",
+   "hasta": "Logroño",
+   "operador": "Autobuses %Cuadra",
+   "miembros": 210
+  },
+  {
+   "ref": "A17",
+   "nombre": "A17 %Logroño %!92% %Haro %!92% %Bilbao %(Autopista)",
+   "desde": "Logroño",
+   "hasta": "Bilbao",
+   "operador": "Autobuses %Cuadra",
+   "miembros": 283
+  },
+  {
+   "ref": "A17",
+   "nombre": "A17 %Logroño %!92% %Haro %!92% %Bilbao %(Por %pueblos)",
+   "desde": "Logroño",
+   "hasta": "Bilbao",
+   "operador": "Autobuses %Cuadra",
+   "miembros": 484
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Gorrebusto %/ �rriobusto %!92% %Logroño",
+   "desde": "Gorrebusto/Barriobusto",
+   "hasta": "Logroño",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 79
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Laguardia %!92% %Logroño",
+   "desde": "Laguardia",
+   "hasta": "Logroño",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 126
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Lantziego %/ %Lanciego %!92% %Logroño",
+   "desde": "Lantziego/Lanciego",
+   "hasta": "Logroño",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 80
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Logroño %!92% %Laguardia",
+   "desde": "Logroño",
+   "hasta": "Laguardia",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 122
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Logroño %!92% %Lantziego %/ %Lanciego",
+   "desde": "Logroño",
+   "hasta": "Lantziego/Lanciego",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 78
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Logroño %!92% %Moreda",
+   "desde": "Logroño",
+   "hasta": "Moreda",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 68
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Logroño %!92% �rriobusto",
+   "desde": "Logroño",
+   "hasta": "Gorrebusto/Barriobusto",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 77
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Moreda %!92% %Logroño",
+   "desde": "Moreda",
+   "hasta": "Logroño",
+   "operador": "Hermanos %Arriaga",
+   "miembros": 70
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Logroño %!92% %Labastida %!92% %San %Vicente � %la %Sonsierra %!92% %Vitoria-Gasteiz",
+   "desde": "Logroño",
+   "hasta": "Vitoria-Gasteiz",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 318
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Logroño %!92% %Labastida %!92% %Vitoria-Gasteiz",
+   "desde": "Logroño",
+   "hasta": "Vitoria-Gasteiz",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 303
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Logroño %!92% %Peñacerrada-Urizaharra %!92% %Vitoria-Gasteiz",
+   "desde": "Logroño",
+   "hasta": "Vitoria-Gasteiz",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 267
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Logroño %!92% �rnedo %!92% %Vitoria-Gasteiz",
+   "desde": "Logroño",
+   "hasta": "Vitoria-Gasteiz",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 219
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Vitoria-Gasteiz %!92% %Labastida %!92% %Logroño",
+   "desde": "Vitoria-Gasteiz",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 321
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Vitoria-Gasteiz %!92% %Labastida %!92% %San %Vicente � %la %Sonsierra %!92% %Logroño",
+   "desde": "Vitoria-Gasteiz",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 328
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Vitoria-Gasteiz %!92% %Peñacerrada-Urizaharra %!92% %Logroño",
+   "desde": "Vitoria-Gasteiz",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 275
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Vitoria-Gasteiz %!92% �rnedo %!92% %Logroño",
+   "desde": "Vitoria-Gasteiz",
+   "hasta": "Logroño",
+   "operador": "Líneas %Regulares � %Álava",
+   "miembros": 230
+  },
+  {
+   "ref": "B1",
+   "nombre": "B1 %La �va %- %Varea",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 148
+  },
+  {
+   "ref": "B1",
+   "nombre": "B1 %Varea-La �va",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 137
+  },
+  {
+   "ref": "B2",
+   "nombre": "B2 %El %Arco-La %Estrella",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 167
+  },
+  {
+   "ref": "B2",
+   "nombre": "B2 %La %Estrella %- %El %Arco",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 162
+  },
+  {
+   "ref": "B3",
+   "nombre": "B3 %El �mpillo %- %Lardero",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 80
+  },
+  {
+   "ref": "B3",
+   "nombre": "B3 %Lardero-El �mpillo",
+   "desde": "",
+   "hasta": "",
+   "operador": "AULOSA",
+   "miembros": 129
+  },
+  {
+   "ref": "M1",
+   "nombre": "M1: %Logroño %=%> %ICVV %=%> �nicero",
+   "desde": "Logroño",
+   "hasta": "Cenicero",
+   "operador": "Metropolitano",
+   "miembros": 241
+  },
+  {
+   "ref": "M1",
+   "nombre": "M1: %Logroño %=%> �nicero",
+   "desde": "Logroño",
+   "hasta": "Cenicero",
+   "operador": "Metropolitano",
+   "miembros": 210
+  },
+  {
+   "ref": "M1",
+   "nombre": "M1: �nicero %=%> %ICVV %=%> %Logroño",
+   "desde": "Cenicero",
+   "hasta": "Logroño",
+   "operador": "Metropolitano",
+   "miembros": 232
+  },
+  {
+   "ref": "M1",
+   "nombre": "M1: �nicero %=%> %Logroño",
+   "desde": "Cenicero",
+   "hasta": "Logroño",
+   "operador": "Metropolitano",
+   "miembros": 215
+  },
+  {
+   "ref": "M3",
+   "nombre": "M3: %Entrena %=%> %La %Grajera %=%> %Logroño",
+   "desde": "Entrena",
+   "hasta": "Logroño",
+   "operador": "Metropolitano",
+   "miembros": 155
+  },
+  {
+   "ref": "M3",
+   "nombre": "M3: %Entrena %=%> %Logroño",
+   "desde": "Entrena",
+   "hasta": "Logroño",
+   "operador": "Metropolitano",
+   "miembros": 142
+  },
+  {
+   "ref": "M3",
+   "nombre": "M3: %Logroño %=%> %Entrena",
+   "desde": "Logroño",
+   "hasta": "Entrena",
+   "operador": "Metropolitano",
+   "miembros": 145
+  },
+  {
+   "ref": "M3",
+   "nombre": "M3: %Logroño %=%> %La %Grajera %=%> %Entrena",
+   "desde": "Logroño",
+   "hasta": "Entrena",
+   "operador": "Metropolitano",
+   "miembros": 172
+  },
+  {
+   "ref": "Pamplona %/ %Iruña %- %Logroño",
+   "nombre": "Pamplona %/ %Iruña %- %Logroño",
+   "desde": "Pamplona %- %Iruña",
+   "hasta": "Logroño",
+   "operador": "La %Estellesa",
+   "miembros": 382
+  },
+  {
+   "ref": "VAC-208",
+   "nombre": "Madrid %- %Pamplona %por %Burgos %y %Logroño",
+   "desde": "Madrid",
+   "hasta": "Pamplona/Iruña",
+   "operador": "PLM",
+   "miembros": 154
+  },
+  {
+   "ref": "VAC-208",
+   "nombre": "Pamolona %- %Logroño %- %Madrid %(Directo)",
+   "desde": "Pamplona/Iruña",
+   "hasta": "Madrid %- %Av. %América",
+   "operador": "PLM",
+   "miembros": 646
+  },
+  {
+   "ref": "VAC-208",
+   "nombre": "Pamplona %- %Logroño %- %Haro %- %Madrid",
+   "desde": "Pamplona/Irula",
+   "hasta": "Madrid %- %Av. %América",
+   "operador": "PLM",
+   "miembros": 684
+  },
+  {
+   "ref": "VAC-208",
+   "nombre": "Pamplona %- %Logroño %- %Madrid %(línea %completa)",
+   "desde": "Pamplona",
+   "hasta": "Madrid %- %Av. %América",
+   "operador": "PLM",
+   "miembros": 968
+  },
+  {
+   "ref": "VAC-213",
+   "nombre": "VAC !3 %La %Manga %!92% %Santander",
+   "desde": "La %Manga",
+   "hasta": "Santander",
+   "operador": "Bilman %Bus",
+   "miembros": 2351
+  },
+  {
+   "ref": "VAC-213",
+   "nombre": "VAC-213 %Santander %- %La %Manga",
+   "desde": "Santander",
+   "hasta": "La %Manga �l %Mar %Menor",
+   "operador": "Bilman %Bus",
+   "miembros": 2398
+  },
+  {
+   "ref": "VAC-213",
+   "nombre": "VAC-213 �rtagena %!92% %Santander",
+   "desde": "Cartagena",
+   "hasta": "Santander",
+   "operador": "Bilman %Bus",
+   "miembros": 2093
+  },
+  {
+   "ref": "VAC-213",
+   "nombre": "VAC-213: %Santander %!92% �rtagena",
+   "desde": "Santander",
+   "hasta": "Cartagena",
+   "operador": "Bilman %Bus",
+   "miembros": 2086
+  },
+  {
+   "ref": "VAC-219",
+   "nombre": "VAC-219 %Vigo %!92% �rcelona",
+   "desde": "Vigo",
+   "hasta": "Barcelona",
+   "operador": "VIBASA %(Monbus)",
+   "miembros": 1307
+  }
+ ],
+ "lineas_agrupadas": [
+  {
+   "ref": "3",
+   "nombre": "3"
+  },
+  {
+   "ref": "A8",
+   "nombre": "A8 %Logroño %- %Oión/Oyón %- %Laguardia"
+  },
+  {
+   "ref": "A10",
+   "nombre": "A10 %Logroño %- %Haro"
+  },
+  {
+   "ref": "A17",
+   "nombre": "A17 %Bilbao %- %Logroño"
+  },
+  {
+   "ref": "A9",
+   "nombre": "A9 %Vitoria-Gasteiz %- %Logroño"
+  },
+  {
+   "ref": "A11",
+   "nombre": "A11 %Logroño %- %Villabuena � %Álava/Eskuernaga"
+  },
+  {
+   "ref": "B3",
+   "nombre": "B3"
+  },
+  {
+   "ref": "1",
+   "nombre": "1"
+  },
+  {
+   "ref": "5",
+   "nombre": "5"
+  },
+  {
+   "ref": "11",
+   "nombre": "11"
+  },
+  {
+   "ref": "6",
+   "nombre": "6"
+  },
+  {
+   "ref": "2",
+   "nombre": "2"
+  },
+  {
+   "ref": "B1",
+   "nombre": "B1"
+  },
+  {
+   "ref": "9",
+   "nombre": "9"
+  },
+  {
+   "ref": "4",
+   "nombre": "4"
+  },
+  {
+   "ref": "B2",
+   "nombre": "B2"
+  },
+  {
+   "ref": "7",
+   "nombre": "7"
+  },
+  {
+   "ref": "10",
+   "nombre": "10"
+  },
+  {
+   "ref": "M1",
+   "nombre": "M1: �nicero %=%> %Logroño"
+  },
+  {
+   "ref": "M3",
+   "nombre": "M3: %Entrena %=%> %Logroño"
+  },
+  {
+   "ref": "VAC-208",
+   "nombre": "Madrid %- %Pamplona %por %Burgos %y %Logroño"
+  },
+  {
+   "ref": "VAC-219",
+   "nombre": "VAC-219 %Vigo %!92% �rcelona"
+  }
+ ],
+ "total_relaciones_sentido": 75,
+ "total_agrupadas": 22
+}

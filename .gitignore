@@ -1,0 +1,9 @@
+tools/
+web/
+web-release/
+juego/web/
+*.apk
+*.apk.idsig
+*.bak*
+__pycache__/
+*.muse-github-snapshot-sync.json
