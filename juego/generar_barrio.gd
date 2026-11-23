@@ -53,6 +53,10 @@ var _acel_forzado := -1.0
 var _gas_espacio := false
 var _pan_en_mano := false
 var _pan_nodo: Node3D = null
+var _bolsa_en_mano := false
+var _bolsa_nodo: Node3D = null
+var _balon_en_mano := false
+var _balon_nodo: Node3D = null
 var _en_columpio := false
 var _aviso_columpio_cd := 0.0
 var _en_coche := false
@@ -3973,18 +3977,45 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 	var mat_pelo := StandardMaterial3D.new()
 	mat_pelo.albedo_color = pelo
 	if not detalle:
-		# ===== Nivel sencillo (multitud): como siempre, piezas
-		# fundidas y 6 mallas por persona. =====
-		p.add_child(_pieza(Vector3(0.44, 0.58, 0.25), Vector3(0, 0.28, 0), camisa, mat_camisa))
+		# ===== Nivel sencillo (multitud): piezas fundidas y 6
+		# mallas por persona, pero ya no clones (E5): talla y
+		# complexión propias, pelo por estilos fundido en la
+		# misma malla de la cabeza y falda para quien la lleva.
+		# Todo cuelga de «cuerpo_s», recolocado para que la
+		# suela quede exactamente donde siempre. =====
+		var ts := float(opc.get("talla", 1.0))
+		var cx := float(opc.get("complexion", 1.0))
+		var cuerpo_s := Node3D.new()
+		cuerpo_s.scale = Vector3(cx, ts, cx)
+		cuerpo_s.position.y = 0.925 * (ts - 1.0)
+		p.add_child(cuerpo_s)
+		var con_falda := femenino and bool(opc.get("falda", false))
+		if con_falda:
+			cuerpo_s.add_child(_fundida([
+				[Vector3(0, 0.30, 0), Vector3(0.44, 0.54, 0.25), camisa],
+				[Vector3(0, -0.02, 0), Vector3(0.54, 0.34, 0.36), pantalon],
+			]))
+		else:
+			cuerpo_s.add_child(_pieza(Vector3(0.44, 0.58, 0.25), Vector3(0, 0.28, 0), camisa, mat_camisa))
 		var pivote_cabeza_s := Node3D.new()
 		pivote_cabeza_s.position = Vector3(0, 0.73, 0)
 		var hv := PackedVector3Array()
 		var hn := PackedVector3Array()
 		var hc := PackedColorArray()
 		_bola_en(hv, hn, hc, Vector3.ZERO, 0.16, piel, 3.7)
-		_caja_en(hv, hn, hc, Vector3(0, 0.13, 0), Vector3(0.30, 0.09, 0.30), pelo, 0.0)
+		var estilo_s := String(opc.get("pelo_estilo", "corto"))
+		if estilo_s != "calvo":
+			_caja_en(hv, hn, hc, Vector3(0, 0.13, 0), Vector3(0.30, 0.09, 0.30), pelo, 0.0)
+		if estilo_s == "melena" or estilo_s == "coleta":
+			_caja_en(hv, hn, hc, Vector3(0, -0.02, -0.135), Vector3(0.29, 0.34, 0.06), pelo, 0.0)
+			_caja_en(hv, hn, hc, Vector3(-0.145, 0.0, 0), Vector3(0.05, 0.30, 0.26), pelo, 0.0)
+			_caja_en(hv, hn, hc, Vector3(0.145, 0.0, 0), Vector3(0.05, 0.30, 0.26), pelo, 0.0)
+		if estilo_s == "coleta":
+			_caja_en(hv, hn, hc, Vector3(0, -0.10, -0.20), Vector3(0.08, 0.30, 0.08), pelo, 0.0)
+		if estilo_s == "mono":
+			_bola_en(hv, hn, hc, Vector3(0, 0.14, -0.13), 0.055, pelo, 3.7)
 		pivote_cabeza_s.add_child(_malla_de(hv, hn, hc, Color.WHITE))
-		p.add_child(pivote_cabeza_s)
+		cuerpo_s.add_child(pivote_cabeza_s)
 		var bi_s: Node3D = null
 		var bd_s: Node3D = null
 		var pi_s: Node3D = null
@@ -3996,7 +4027,7 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 				[Vector3(0, -0.26, 0), Vector3(0.11, 0.56, 0.11), camisa],
 				[Vector3(0, -0.58, 0), Vector3(0.10, 0.10, 0.10), piel],
 			]))
-			p.add_child(hombro)
+			cuerpo_s.add_child(hombro)
 			if lado < 0.0:
 				bi_s = hombro
 			else:
@@ -4004,11 +4035,20 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 		for lado in [-1.0, 1.0]:
 			var cadera := Node3D.new()
 			cadera.position = Vector3(0.11 * lado, -0.02, 0)
-			cadera.add_child(_fundida([
-				[Vector3(0, -0.42, 0), Vector3(0.15, 0.80, 0.15), pantalon],
-				[Vector3(0, -0.86, 0.05), Vector3(0.15, 0.09, 0.27), Color(0.12, 0.10, 0.09)],
-			]))
-			p.add_child(cadera)
+			if con_falda:
+				# Con falda, las piernas son piel: muslo y
+				# pantorrilla en la misma malla fundida.
+				cadera.add_child(_fundida([
+					[Vector3(0, -0.20, 0), Vector3(0.15, 0.38, 0.15), piel],
+					[Vector3(0, -0.60, 0), Vector3(0.13, 0.40, 0.13), piel],
+					[Vector3(0, -0.86, 0.05), Vector3(0.15, 0.09, 0.27), Color(0.12, 0.10, 0.09)],
+				]))
+			else:
+				cadera.add_child(_fundida([
+					[Vector3(0, -0.42, 0), Vector3(0.15, 0.80, 0.15), pantalon],
+					[Vector3(0, -0.86, 0.05), Vector3(0.15, 0.09, 0.27), Color(0.12, 0.10, 0.09)],
+				]))
+			cuerpo_s.add_child(cadera)
 			if lado < 0.0:
 				pi_s = cadera
 			else:
@@ -4035,6 +4075,26 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 	cuerpo.add_child(_pieza(hombro_t, Vector3(-hombro_x, 0.50 * t, 0), camisa, mat_camisa))
 	cuerpo.add_child(_pieza(hombro_t, Vector3(hombro_x, 0.50 * t, 0), camisa, mat_camisa))
 	cuerpo.add_child(_pieza(Vector3(0.13, 0.14 * t, 0.13), Vector3(0, 0.615 * t, 0), piel))
+	# ---- Ropa en piezas (E3): lo que viste a cada uno ----
+	if bool(opc.get("mono_trabajo", false)):
+		# El mono de trabajo: peto y tirantes del color del
+		# pantalón sobre la camisa, con su bolsillo en el pecho.
+		cuerpo.add_child(_pieza(Vector3(ancho_torso - 0.14, 0.30 * t, 0.024), Vector3(0, 0.26 * t, prof * 0.5 + 0.004), pantalon, mat_pantalon))
+		cuerpo.add_child(_pieza(Vector3(0.075, 0.17 * t, 0.024), Vector3(-0.115, 0.455 * t, prof * 0.5 + 0.004), pantalon, mat_pantalon))
+		cuerpo.add_child(_pieza(Vector3(0.075, 0.17 * t, 0.024), Vector3(0.115, 0.455 * t, prof * 0.5 + 0.004), pantalon, mat_pantalon))
+		cuerpo.add_child(_pieza(Vector3(0.13, 0.10 * t, 0.026), Vector3(0, 0.30 * t, prof * 0.5 + 0.005), camisa, mat_camisa))
+	if bool(opc.get("reflectante", false)):
+		# Las bandas plateadas del uniforme de trabajo.
+		var col_refl := Color(0.83, 0.85, 0.87)
+		cuerpo.add_child(_pieza(Vector3(ancho_torso + 0.014, 0.05, prof + 0.014), Vector3(0, 0.22 * t, 0), col_refl))
+		cuerpo.add_child(_pieza(Vector3(ancho_torso + 0.014, 0.05, prof + 0.014), Vector3(0, 0.40 * t, 0), col_refl))
+	var col_chaqueta := Color(opc.get("chaqueta", Color(0, 0, 0, 0)))
+	if col_chaqueta.a > 0.0:
+		# Chaqueta abierta: dos delanteros y la espalda sobre
+		# la camisa (las mangas van en los brazos).
+		cuerpo.add_child(_pieza(Vector3(0.15, 0.42 * t, 0.024), Vector3(-0.155, 0.33 * t, prof * 0.5 + 0.004), col_chaqueta))
+		cuerpo.add_child(_pieza(Vector3(0.15, 0.42 * t, 0.024), Vector3(0.155, 0.33 * t, prof * 0.5 + 0.004), col_chaqueta))
+		cuerpo.add_child(_pieza(Vector3(ancho_torso, 0.42 * t, 0.024), Vector3(0, 0.33 * t, -prof * 0.5 - 0.004), col_chaqueta))
 	if bool(opc.get("falda", false)):
 		# Falda sobre las caderas; las piernas salen por debajo.
 		cuerpo.add_child(_pieza(Vector3(ancho_torso + 0.10, 0.36 * t, prof + 0.12), Vector3(0, -0.06 * t, 0), pantalon, mat_pantalon))
@@ -4130,7 +4190,10 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 	for lado in [-1.0, 1.0]:
 		var hombro := Node3D.new()
 		hombro.position = Vector3(((0.30 if femenino else 0.33)) * lado, 0.52 * t, 0)
-		hombro.add_child(_pieza(Vector3(0.13, 0.27 * t, 0.13), Vector3(0, -0.135 * t, 0), camisa, mat_camisa))
+		if col_chaqueta.a > 0.0:
+			hombro.add_child(_pieza(Vector3(0.13, 0.27 * t, 0.13), Vector3(0, -0.135 * t, 0), col_chaqueta))
+		else:
+			hombro.add_child(_pieza(Vector3(0.13, 0.27 * t, 0.13), Vector3(0, -0.135 * t, 0), camisa, mat_camisa))
 		var codo := Node3D.new()
 		codo.position = Vector3(0, -0.27 * t, 0)
 		codo.add_child(_pieza(Vector3(0.105, 0.25 * t, 0.105), Vector3(0, -0.125 * t, 0), piel))
@@ -4174,6 +4237,10 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 		else:
 			pd = cadera
 			rd = rodilla
+	if bool(opc.get("reflectante", false)):
+		# Y las bandas de las perneras, a juego con las del torso.
+		for lado_r in [-1.0, 1.0]:
+			cuerpo.add_child(_pieza(Vector3(0.165, 0.045, 0.165), Vector3(0.11 * lado_r, -0.26, 0), Color(0.83, 0.85, 0.87)))
 	return {"raiz": p, "bi": bi, "bd": bd, "pi": pi, "pd": pd, "cabeza": pivote_cabeza, "mat_camisa": mat_camisa, "mat_pelo": mat_pelo, "estampado": estampado, "ci": ci, "cd": cd, "ri": ri, "rd": rd, "ojo_i": ojo_i, "ojo_d": ojo_d, "boca": boca}
 
 const CAMISETAS := [Color(0.92, 0.91, 0.89), Color(0.16, 0.38, 0.62), Color(0.75, 0.30, 0.25), Color(0.20, 0.55, 0.35), Color(0.85, 0.65, 0.20), Color(0.25, 0.25, 0.28), Color(0.80, 0.45, 0.60), Color(0.50, 0.30, 0.60)]
@@ -4275,6 +4342,15 @@ func _animar_paso(delta: float, andando: bool) -> void:
 		_pierna_d.rotation.x = -a
 		_brazo_i.rotation.x = -a * 0.7
 		_brazo_d.rotation.x = a * 0.7
+		# Con algo en la mano, ese brazo no se balancea: el del
+		# pan va medio doblado, el de la bolsa cuelga con su
+		# peso y el del balón lo sujeta bajo el brazo.
+		if _pan_en_mano:
+			_brazo_d.rotation.x = -0.55 + sin(_fase_paso + PI) * 0.15
+		elif _bolsa_en_mano:
+			_brazo_d.rotation.x = -0.15 + sin(_fase_paso + PI) * 0.12
+		if _balon_en_mano:
+			_brazo_i.rotation.x = -0.22 + sin(_fase_paso) * 0.08
 		if _rodilla_i != null:
 			# La rodilla flexiona cuando su pierna avanza (talón
 			# que se levanta por detrás) y el codo mantiene una
@@ -4683,7 +4759,83 @@ func _probar_pan() -> void:
 	_en_coche = false
 	_refrescar_pan()
 	pasa = pasa and _pan_nodo != null and is_instance_valid(_pan_nodo)
+	# E4: el balón de Decathlon va bajo el brazo izquierdo y
+	# la compra en una bolsa en la mano derecha; el pan de la
+	# misión manda sobre la bolsa, y en casa se deja todo
+	# menos el pan.
+	_dinero = 100
+	_comprar_tienda("dec_balon")
+	pasa = pasa and _balon_en_mano and _balon_nodo != null and is_instance_valid(_balon_nodo)
+	_comprar_tienda("dec_mochila")
+	# La bolsa se compra, pero con el pan en la mano espera:
+	# el pan de la misión manda en la mano derecha.
+	pasa = pasa and _bolsa_en_mano and _bolsa_nodo == null
+	_pan_en_mano = false
+	_refrescar_pan()
+	pasa = pasa and _bolsa_nodo != null and is_instance_valid(_bolsa_nodo) and _pan_nodo == null
+	_comprar_pan()
+	pasa = pasa and _pan_nodo != null and _bolsa_nodo == null and _balon_nodo != null
+	_entrar_interior("piso")
+	pasa = pasa and not _bolsa_en_mano and not _balon_en_mano and _balon_nodo == null
+	_salir_interior()
 	print("PAN_PRUEBA_OK pasa=", pasa, " dinero=", _dinero)
+
+func _probar_mapa() -> void:
+	# El plano sirve para moverse (pedido de Jon): se abre el
+	# mapa, se clica el punto dorado de un lugar con el MISMO
+	# camino de entrada que usa el ratón, y el jugador aparece
+	# allí con el mapa cerrado.
+	var pasa := true
+	var poi: Dictionary = {}
+	for p in _pois_mapa:
+		if String(p["n"]).contains("Estadio"):
+			poi = p
+			break
+	if poi.is_empty() and not _pois_mapa.is_empty():
+		poi = _pois_mapa[0]
+	pasa = pasa and not poi.is_empty()
+	_abrir_mapa()
+	pasa = pasa and _mapa_abierto
+	var antes := _jugador.position
+	var pos_px: Vector2 = _mapa.call("punto_de_poi", poi)
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = pos_px
+	_mapa.call("_gui_input", ev)
+	var d := Vector2(_jugador.position.x - float(poi["x"]), _jugador.position.z - float(poi["z"])).length()
+	pasa = pasa and not _mapa_abierto and d < 30.0 and _jugador.position.distance_to(antes) > 100.0
+	print("MAPA_PRUEBA_OK pasa=", pasa, " lugar=", String(poi.get("n", "?")), " dist=", d)
+
+func _probar_multitud() -> void:
+	# E5: la multitud ya no es de clones y el presupuesto de
+	# dibujo no cambia: 6 mallas por persona sencilla sea cual
+	# sea la variante, la talla vive en el cuerpo interior y
+	# la melena funde más pelo en la misma malla de la cabeza
+	# que el pelo corto.
+	var pasa := true
+	var variantes: Array = [
+		{"pelo_estilo": "corto"},
+		{"pelo_estilo": "calvo"},
+		{"pelo_estilo": "melena"},
+		{"pelo_estilo": "coleta"},
+		{"pelo_estilo": "mono"},
+		{"pelo_estilo": "corto", "falda": true},
+	]
+	var verts_cabeza := {}
+	for v in variantes:
+		var opc: Dictionary = {"talla": 0.95, "complexion": 1.0}
+		opc.merge(v)
+		var per := _hacer_persona(Color(0.4, 0.3, 0.3), Color(0.2, 0.2, 0.25), Color(0.15, 0.10, 0.08), false, bool(v.get("falda", false)), opc)
+		pasa = pasa and _contar_mallas(per["raiz"]) == 6
+		var cabeza: Node = per["cabeza"]
+		var malla := (cabeza.get_child(0) as MeshInstance3D).mesh
+		verts_cabeza[String(v["pelo_estilo"]) + ("_falda" if bool(v.get("falda", false)) else "")] = (malla.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	var per_t := _hacer_persona(Color(0.4, 0.3, 0.3), Color(0.2, 0.2, 0.25), Color(0.15, 0.10, 0.08), false, false, {"talla": 1.05})
+	var cuerpo_t: Node3D = per_t["raiz"].get_child(0)
+	pasa = pasa and absf(cuerpo_t.scale.y - 1.05) < 0.001
+	pasa = pasa and int(verts_cabeza["melena"]) > int(verts_cabeza["corto"]) and int(verts_cabeza["coleta"]) > int(verts_cabeza["corto"])
+	print("MULTITUD_OK pasa=", pasa, " verts=", verts_cabeza)
 
 func _probar_coche() -> void:
 	# Dos quejas de Jon con el coche: «no acelera con la tecla
@@ -6270,6 +6422,15 @@ func _comprar_tienda(clave: String) -> void:
 		_aviso_set("Yelmo Cines: has visto la película. ¡Dos horas que han volado!", 4.0)
 	else:
 		_aviso_set("Has comprado %s en %s" % [String(t["producto"]), String(t["nombre"])], 3.5)
+	# Lo comprado se lleva encima (E4): el balón bajo el brazo
+	# y lo demás en una bolsa en la mano. La comida y el cine
+	# se disfrutan allí mismo, sin bolsa.
+	if clave == "dec_balon":
+		_balon_en_mano = true
+		_refrescar_pan()
+	elif clave in ["game", "mediamarkt", "eci", "forum", "alehop", "dec_casco", "dec_mochila", "dec_chaqueta", "dec_mancuernas", "dec_zapatillas", "dec_raqueta", "dec_banador", "dec_tienda"]:
+		_bolsa_en_mano = true
+		_refrescar_pan()
 	_sonar("cobro")
 	_actualizar_hud_dinero()
 	_guardar()
@@ -6594,6 +6755,10 @@ func _entrar_interior(id: String) -> void:
 	_jugador.position = den + Vector3(0, 0.95, 0)
 	_dir_jugador = PI
 	_sonar("puerta_abrir")
+	if id == "piso":
+		# Al llegar a casa dejas la compra y el balón.
+		_bolsa_en_mano = false
+		_balon_en_mano = false
 	_refrescar_pan()
 	if id == "ayuntamiento" and not _empleo_desbloqueado:
 		_empleo_desbloqueado = true
@@ -6634,19 +6799,44 @@ func _dormir() -> void:
 	print("DORMIR_OK dia=", _dia)
 
 func _refrescar_pan() -> void:
-	# La barra comprada se ve en la mano derecha hasta entregar
-	# la misión de Carmen o entrar en casa; en coche o en bus
-	# las manos van al volante y no se ve (Jon: «cuando salgo
-	# de la panadería no llevo ninguna barra en la mano»).
+	# Lo que llevas encima se ve (Jon: «cuando salgo de la
+	# panadería no llevo ninguna barra en la mano»): la barra
+	# en la mano derecha hasta entregar la misión de Carmen,
+	# la bolsa de la compra también en la derecha si no hay
+	# pan, y el balón bajo el brazo izquierdo. En coche o en
+	# bus las manos van al volante y en casa no se ve nada.
 	if _pan_nodo != null:
 		if is_instance_valid(_pan_nodo):
 			_pan_nodo.queue_free()
 		_pan_nodo = null
-	if not _pan_en_mano or _brazo_d == null or _en_coche or _en_bus or _en_interior == "piso":
+	if _bolsa_nodo != null:
+		if is_instance_valid(_bolsa_nodo):
+			_bolsa_nodo.queue_free()
+		_bolsa_nodo = null
+	if _balon_nodo != null:
+		if is_instance_valid(_balon_nodo):
+			_balon_nodo.queue_free()
+		_balon_nodo = null
+	if _brazo_d == null or _en_coche or _en_bus or _en_interior == "piso":
 		return
-	var pan := _pieza(Vector3(0.10, 0.10, 0.46), Vector3(0, -0.72, 0.10), Color(0.85, 0.62, 0.33))
-	_brazo_d.add_child(pan)
-	_pan_nodo = pan
+	if _pan_en_mano:
+		var pan := _pieza(Vector3(0.10, 0.10, 0.46), Vector3(0, -0.72, 0.10), Color(0.85, 0.62, 0.33))
+		_brazo_d.add_child(pan)
+		_pan_nodo = pan
+	elif _bolsa_en_mano:
+		var bolsa := Node3D.new()
+		bolsa.add_child(_pieza(Vector3(0.27, 0.30, 0.19), Vector3(0, -0.86, 0.06), Color(0.74, 0.60, 0.39)))
+		bolsa.add_child(_pieza(Vector3(0.27, 0.05, 0.19), Vector3(0, -0.70, 0.06), Color(0.62, 0.48, 0.30)))
+		_brazo_d.add_child(bolsa)
+		_bolsa_nodo = bolsa
+	if _balon_en_mano and _brazo_i != null:
+		var hv2 := PackedVector3Array()
+		var hn2 := PackedVector3Array()
+		var hc2 := PackedColorArray()
+		_bola_en(hv2, hn2, hc2, Vector3(0, -0.52, 0.07), 0.145, Color(0.10, 0.30, 0.75), 3.7)
+		var balon := _malla_de(hv2, hn2, hc2, Color.WHITE)
+		_brazo_i.add_child(balon)
+		_balon_nodo = balon
 
 func _comprar_pan() -> void:
 	if _dinero < 2:
@@ -6759,7 +6949,13 @@ func _poner_encargante(punto: Vector3, hacia: Vector2) -> void:
 	# atiende»). Se queda junto al objetivo, respirando.
 	_quitar_encargante()
 	var camisas_e := [Color(0.75, 0.35, 0.25), Color(0.25, 0.45, 0.65), Color(0.35, 0.60, 0.35), Color(0.80, 0.60, 0.20)]
-	var per := _hacer_persona(camisas_e[_rng.randi() % camisas_e.size()], Color(0.25, 0.25, 0.30), Color(0.20, 0.15, 0.10), false, _rng.randf() < 0.5)
+	var fem_p := _rng.randf() < 0.5
+	var per := _hacer_persona(camisas_e[_rng.randi() % camisas_e.size()], Color(0.25, 0.25, 0.30), PELOS[_rng.randi() % PELOS.size()], false, fem_p, {
+		"piel": [Color(0.93, 0.74, 0.60), Color(0.88, 0.64, 0.47), Color(0.72, 0.50, 0.36)][_rng.randi() % 3],
+		"talla": 0.94 + _rng.randf() * 0.10,
+		"pelo_estilo": ("melena" if _rng.randf() < 0.5 else "coleta") if fem_p else "corto",
+		"falda": fem_p and _rng.randf() < 0.3,
+	})
 	var raiz: Node3D = per["raiz"]
 	var sitio: Vector3
 	if hacia != Vector2.ZERO:
@@ -7104,6 +7300,8 @@ func _crear_interfaz() -> void:
 	_mapa.set_script(load("res://mapa.gd"))
 	_mapa.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_mapa.visible = false
+	_mapa.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_mapa.connect("lugar_elegido", _al_elegir_lugar_mapa)
 	capa.add_child(_mapa)
 	# Pantalla de ayuda al empezar, con el dinero actual
 	_ayuda = PanelContainer.new()
@@ -7341,6 +7539,37 @@ func _abrir_mapa() -> void:
 func _cerrar_mapa() -> void:
 	_mapa.visible = false
 	_mapa_abierto = false
+
+func _al_elegir_lugar_mapa(poi: Dictionary) -> void:
+	# Clic en un punto dorado del plano = aparecer en ese
+	# lugar (pedido de Jon: empieza cada partida en Miguel
+	# Villanueva y quiere reubicarse desde el plano). Antes
+	# del salto se sale limpiamente de donde esté: columpio,
+	# interior, bus, coche o banco.
+	if not _carr.is_empty():
+		_aviso_set("En plena carrera no puedes saltar por el mapa", 3.0)
+		return
+	if _auto:
+		_aviso_set("El piloto automático va conduciendo; espera a llegar", 3.0)
+		return
+	if _en_columpio:
+		_bajar_columpio()
+	if _en_interior != "":
+		_salir_interior()
+	if _en_bus:
+		_alternar_bus()
+	elif _en_coche:
+		_alternar_coche()
+	if _sentado:
+		_alternar_sentarse()
+	_nadando = false
+	_jugador.rotation.x = 0.0
+	_en_vuelta = false
+	var destino := Vector3(float(poi["x"]), 0, float(poi["z"]))
+	var libre := _punto_libre(destino, 0.5)
+	_jugador.position = Vector3(libre.x, _altura(libre.x, libre.z) + 0.95, libre.z)
+	_cerrar_mapa()
+	_aviso_set("Has ido directo a " + String(poi["n"]), 3.0)
 
 # ---------- Fase 5.2: controles táctiles ----------
 
@@ -9177,11 +9406,11 @@ func _crear_historia() -> void:
 		var id := String(d["id"])
 		var pos := _punto_libre(Vector3(sitios[id]), 0.5)
 		var opcs_pj := {
-			"carmen": {"piel": Color(0.93, 0.74, 0.60), "talla": 0.95, "pelo_estilo": "mono", "gafas": true, "falda": true},
-			"paco": {"piel": Color(0.88, 0.66, 0.50), "talla": 1.03, "pelo_estilo": "corto", "barba": true},
-			"lucia": {"piel": Color(0.94, 0.76, 0.62), "talla": 0.99, "pelo_estilo": "coleta", "gafas": true},
+			"carmen": {"piel": Color(0.93, 0.74, 0.60), "talla": 0.95, "pelo_estilo": "mono", "gafas": true, "falda": true, "chaqueta": Color(0.22, 0.18, 0.32)},
+			"paco": {"piel": Color(0.88, 0.66, 0.50), "talla": 1.03, "pelo_estilo": "corto", "barba": true, "mono_trabajo": true},
+			"lucia": {"piel": Color(0.94, 0.76, 0.62), "talla": 0.99, "pelo_estilo": "coleta", "gafas": true, "chaqueta": Color(0.27, 0.34, 0.48)},
 			"elias": {"piel": Color(0.91, 0.71, 0.57), "talla": 0.97, "pelo_estilo": "gorra", "bigote": true, "baston": true},
-			"marta": {"piel": Color(0.89, 0.68, 0.53), "talla": 1.0, "pelo_estilo": "mono"},
+			"marta": {"piel": Color(0.89, 0.68, 0.53), "talla": 1.0, "pelo_estilo": "mono", "reflectante": true},
 		}
 		var per := _hacer_persona(d["camisa"], d["pantalon"], d["pelo"], true, bool(d["fem"]), opcs_pj.get(id, {}))
 		var raiz: Node3D = per["raiz"]
@@ -9723,6 +9952,12 @@ func _enc_cancelar() -> void:
 	_aviso_set("Encuentro cancelado", 4.0)
 	print("ENCUENTRO_CANCELADO")
 
+func _contar_mallas(n: Node) -> int:
+	var c := 1 if n is MeshInstance3D else 0
+	for h in n.get_children():
+		c += _contar_mallas(h)
+	return c
+
 func _probar_protagonistas() -> void:
 	# E1+E2: el jugador y los cinco PJ de historia son de nivel
 	# protagonista (rodillas, codos, ojos y boca) y están en el
@@ -9732,7 +9967,14 @@ func _probar_protagonistas() -> void:
 		var d: Dictionary = _pjs[id]["d"]
 		if d.get("ri") == null or d.get("ojo_i") == null or d.get("boca") == null:
 			bien = false
-	print("PROTAGONISTAS_OK pasa=", bien, " caras=", _caras.size(), " pjs=", _pjs.size())
+	# E3: la ropa en piezas suma mallas frente a ir «a pelo»:
+	# el mono de trabajo, las bandas reflectantes y la chaqueta.
+	var base3 := _contar_mallas(_hacer_persona(Color(0.4, 0.4, 0.4), Color(0.2, 0.2, 0.2), Color(0.1, 0.1, 0.1), true, false)["raiz"])
+	var con_mono := _contar_mallas(_hacer_persona(Color(0.4, 0.4, 0.4), Color(0.2, 0.2, 0.2), Color(0.1, 0.1, 0.1), true, false, {"mono_trabajo": true})["raiz"])
+	var con_refl := _contar_mallas(_hacer_persona(Color(0.4, 0.4, 0.4), Color(0.2, 0.2, 0.2), Color(0.1, 0.1, 0.1), true, false, {"reflectante": true})["raiz"])
+	var con_chaq := _contar_mallas(_hacer_persona(Color(0.4, 0.4, 0.4), Color(0.2, 0.2, 0.2), Color(0.1, 0.1, 0.1), true, false, {"chaqueta": Color(0.2, 0.2, 0.3)})["raiz"])
+	bien = bien and con_mono > base3 and con_refl > base3 and con_chaq > base3
+	print("PROTAGONISTAS_OK pasa=", bien, " caras=", _caras.size(), " pjs=", _pjs.size(), " ropa=", base3, "/", con_mono, "/", con_refl, "/", con_chaq)
 
 func _probar_historia() -> void:
 	_historia_idx = 0
@@ -10626,7 +10868,18 @@ func _crear_peatones() -> void:
 				break
 		if nodo < 0:
 			continue
-		var persona := _hacer_persona(camisas[k % camisas.size()], Color(0.20 + _rng.randf() * 0.15, 0.20, 0.24), pelos[k % pelos.size()])
+		# Cada paseante con lo suyo (E5): sexo, piel, talla,
+		# complexión, pelo y pantalón de paleta, falda a veces.
+		var fem_k := _rng.randf() < 0.5
+		var estilos_k: Array = ["melena", "coleta", "mono", "corto"] if fem_k else ["corto", "corto", "calvo", "mono"]
+		var opc_k := {
+			"piel": [Color(0.93, 0.74, 0.60), Color(0.88, 0.64, 0.47), Color(0.96, 0.80, 0.66), Color(0.72, 0.50, 0.36), Color(0.58, 0.40, 0.28), Color(0.84, 0.60, 0.44)][_rng.randi() % 6],
+			"talla": 0.93 + _rng.randf() * 0.12,
+			"complexion": 0.94 + _rng.randf() * 0.12,
+			"pelo_estilo": estilos_k[_rng.randi() % estilos_k.size()],
+			"falda": fem_k and _rng.randf() < 0.35,
+		}
+		var persona := _hacer_persona(camisas[_rng.randi() % camisas.size()], [Color(0.16, 0.22, 0.38), Color(0.10, 0.10, 0.12), Color(0.35, 0.33, 0.30), Color(0.42, 0.36, 0.26), Color(0.20, 0.26, 0.20), Color(0.30, 0.20, 0.16), Color(0.55, 0.52, 0.48)][_rng.randi() % 7], pelos[_rng.randi() % pelos.size()], false, fem_k, opc_k)
 		var raiz: Node3D = persona["raiz"]
 		var np2: Vector2 = _nodos[nodo]
 		raiz.position = Vector3(np2.x, _altura(np2.x, np2.y) + 0.95, np2.y)
@@ -10640,7 +10893,11 @@ func _crear_peatones() -> void:
 	print("PEATONES_OK n=", _peatones.size() + _estaticos.size(), " comportamientos=", _estaticos.size(), " perros=", _perros.size(), " pajaros=", _pajaros.size())
 
 func _persona_gal(base: Vector3, desf: Vector2, camisa: Color, pelo: Color, fem: bool, escala: float) -> Dictionary:
-	var per := _hacer_persona(camisa, Color(0.22, 0.23, 0.28), pelo, false, fem)
+	var per := _hacer_persona(camisa, Color(0.22, 0.23, 0.28), pelo, false, fem, {
+		"piel": [Color(0.93, 0.74, 0.60), Color(0.88, 0.64, 0.47), Color(0.96, 0.80, 0.66)][_rng.randi() % 3],
+		"pelo_estilo": ("coleta" if _rng.randf() < 0.5 else "melena") if fem else "corto",
+		"falda": fem and escala > 0.9,
+	})
 	var rz: Node3D = per["raiz"]
 	var sitio := _punto_libre(base + Vector3(desf.x, 0, desf.y), 0.4)
 	rz.scale = Vector3.ONE * escala
@@ -10789,7 +11046,15 @@ func _poi_nom(nombre: String) -> Vector3:
 	return Vector3.ZERO
 
 func _persona_en(base: Vector3, desf: Vector2, camisa: Color, pelo: Color) -> Dictionary:
-	var persona := _hacer_persona(camisa, Color(0.22, 0.23, 0.28), pelo)
+	var fem_e := _rng.randf() < 0.5
+	var estilos_e: Array = ["melena", "coleta", "mono", "corto"] if fem_e else ["corto", "corto", "calvo", "mono"]
+	var persona := _hacer_persona(camisa, Color(0.22, 0.23, 0.28), pelo, false, fem_e, {
+		"piel": [Color(0.93, 0.74, 0.60), Color(0.88, 0.64, 0.47), Color(0.72, 0.50, 0.36), Color(0.84, 0.60, 0.44)][_rng.randi() % 4],
+		"talla": 0.94 + _rng.randf() * 0.10,
+		"complexion": 0.95 + _rng.randf() * 0.10,
+		"pelo_estilo": estilos_e[_rng.randi() % estilos_e.size()],
+		"falda": fem_e and _rng.randf() < 0.3,
+	})
 	var raiz: Node3D = persona["raiz"]
 	var sitio := _punto_libre(base + Vector3(desf.x, 0, desf.y), 0.4)
 	raiz.position = Vector3(sitio.x, _altura(sitio.x, sitio.z) + 0.95, sitio.z)
@@ -12507,6 +12772,12 @@ func _capturar_si_toca() -> void:
 		_probar_coche()
 	elif args.has("probar_pan"):
 		_probar_pan()
+	elif args.has("probar_mapa"):
+		_probar_mapa()
+	elif args.has("probar_multitud"):
+		_probar_multitud()
+	elif args.has("probar_protagonistas"):
+		_probar_protagonistas()
 	elif args.has("probar_gallarza"):
 		_probar_gallarza()
 	elif args.has("probar_buses"):
@@ -13145,6 +13416,22 @@ func _capturar_si_toca() -> void:
 		_refrescar_rotulos()
 		_cam.look_at_from_position(Vector3(-508.0, _altura(-508.0, 720.5) + 1.8, 720.5), Vector3(-512.2, _altura(-512.2, 716.3) + 1.2, 716.3), Vector3.UP)
 		nombre = "columpio.png"
+	elif args.has("capturar_bolsa"):
+		# E4: el jugador con el balón bajo el brazo izquierdo
+		# y la bolsa de la compra en la mano derecha, en la
+		# puerta del Decathlon.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			_construir_tile(_tile_de(Vector2(-2455, 1564)) + dt)
+		_jugador.position = Vector3(-2452.0, _altura(-2452.0, 1564.0) + 0.95, 1564.0)
+		_jugador.rotation.y = PI / 2.0
+		_balon_en_mano = true
+		_bolsa_en_mano = true
+		_refrescar_pan()
+		_brazo_i.rotation.x = -0.22
+		_brazo_d.rotation.x = -0.15
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(-2448.6, _altura(-2448.6, 1562.6) + 1.5, 1562.6), Vector3(-2452.0, _altura(-2452.0, 1564.0) + 1.0, 1564.0), Vector3.UP)
+		nombre = "bolsa.png"
 	elif args.has("capturar_ra"):
 		for tt in [Vector2i(3, 4), Vector2i(2, 4), Vector2i(3, 5), Vector2i(2, 5), Vector2i(3, 3), Vector2i(4, 4)]:
 			_construir_tile(tt)
