@@ -8708,7 +8708,7 @@ func _probar_bus_desde(k: int, sentido := 0) -> void:
 # Historia lineal propia (13A: 3 capítulos, 12 misiones, 5 personajes
 # fijos), con sistema de diálogos, y encuentros callejeros con vecinos.
 const HISTORIA: Array = [
-	{"pj": "carmen", "titulo": "La casera", "dest": "panaderia", "dest_txt": "ve a la panadería", "paga": 10, "tipo": "",
+	{"pj": "carmen", "titulo": "La casera", "dest": "panaderia", "dest_txt": "ve a la panadería", "paga": 10, "adelanto": 5, "tipo": "",
 	 "intro": [["Carmen", "¡Hombre, el inquilino nuevo! Soy Carmen, tu casera. El piso es pequeño, pero tiene una luz preciosa."], ["Tú", "Encantado, Carmen. Acabo de llegar y aún no tengo ni desayuno."], ["Carmen", "Pues baja a la panadería de aquí al lado y tráeme una barra de paso. Quédate las vueltas para un café."]],
 	 "cierre": [["Carmen", "Esa barra huele a gloria. En Logroño el pan se compra a diario, ¿eh? No me seas de congelar."], ["Tú", "Anotado, Carmen."]]},
 	{"pj": "elias", "titulo": "El banco del Espolón", "dest": "parque_ebro", "dest_txt": "acompáñale al Parque del Ebro", "paga": 12, "tipo": "", "esc": "pie",
@@ -8907,6 +8907,14 @@ func _hablar_cercano() -> void:
 func _hist_empezar() -> void:
 	var m: Dictionary = HISTORIA[_historia_idx]
 	_hist = {"idx": _historia_idx, "fase": "ir", "pasajero": false}
+	var adelanto := int(m.get("adelanto", 0))
+	if adelanto > 0:
+		# Recados con compra: quien encarga pone el dinero por delante
+		# (Carmen: 5 € para una barra de 2 €, «quédate las vueltas»).
+		_dinero += adelanto
+		_actualizar_hud_dinero()
+		_aviso_set(String(_pjs[String(m["pj"])]["nombre"]) + " te da " + str(adelanto) + " € para el recado", 5.0)
+		print("HISTORIA_ADELANTO ", adelanto, " dinero=", _dinero)
 	if String(m.get("esc", "")) != "":
 		_pjs[String(m["pj"])]["volviendo"] = false
 	_hist_marcar()
@@ -9322,7 +9330,7 @@ func _probar_historia() -> void:
 	_mis_coches[_coche_activo]["danio"] = 40
 	var esperado := 0
 	for m in HISTORIA:
-		esperado += int(m["paga"])
+		esperado += int(m["paga"]) + int(m.get("adelanto", 0))
 	var frames := 0
 	var ok := true
 	while _historia_idx < HISTORIA.size() and frames < 30000:
