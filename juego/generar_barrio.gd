@@ -307,6 +307,8 @@ func _ready() -> void:
 	_puentes_medida()
 	_crear_vias()
 	_crear_colegios()
+	_crear_parques_infantiles()
+	_hospital_gente()
 	_soportales()
 	_crear_radares()
 	_crear_peatones()
@@ -1382,6 +1384,54 @@ func _calcular_ruta(desde: Vector3, hasta: Vector3) -> Array:
 		salida.append(p)
 	return salida
 
+func _ruta_calle(desde: Vector3, hasta: Vector3) -> Array:
+	# Como _calcular_ruta pero SOLO por nodos del grafo, sin
+	# los tramos de conexion al punto exacto: para las lineas
+	# de autobus, que tienen que ir por las calles y volver
+	# por el mismo recorrido. Los tramos (pensados para llegar
+	# a un portal) metian en las lineas excursiones en
+	# escalera rodeando edificios y ganchos en las cabeceras
+	# (visto por Jon en las lineas roja, verde y azul).
+	var salida: Array = []
+	if _nodos.is_empty():
+		salida.append(hasta)
+		return salida
+	var s := _nodo_cercano(Vector2(desde.x, desde.z))
+	var t := _nodo_cercano(Vector2(hasta.x, hasta.z))
+	if s == t:
+		salida.append(Vector3(_nodos[t].x, 0, _nodos[t].y))
+		return salida
+	var dist := {s: 0.0}
+	var prev := {}
+	var abierta: Array = []
+	_heap_push(abierta, [_nodos[s].distance_to(_nodos[t]), s])
+	var cerrados := {}
+	while not abierta.is_empty():
+		var actual: Array = _heap_pop(abierta)
+		var u: int = actual[1]
+		if cerrados.has(u):
+			continue
+		cerrados[u] = true
+		if u == t:
+			break
+		for par in _ady.get(u, []):
+			var v: int = par[0]
+			var nd: float = dist.get(u, 1e18) + par[1]
+			if nd < dist.get(v, 1e18):
+				dist[v] = nd
+				prev[v] = u
+				_heap_push(abierta, [nd + _nodos[v].distance_to(_nodos[t]), v])
+	if not prev.has(t):
+		salida.append(Vector3(_nodos[t].x, 0, _nodos[t].y))
+		return salida
+	var cadena: Array = [t]
+	while cadena[0] != s:
+		cadena.push_front(prev[cadena[0]])
+	for idn in cadena:
+		var nv: Vector2 = _nodos[idn]
+		salida.append(Vector3(nv.x, 0, nv.y))
+	return salida
+
 func _punto_libre(p: Vector3, radio: float) -> Vector3:
 	if not _choca(Vector2(p.x, p.z), radio):
 		return p
@@ -1392,6 +1442,26 @@ func _punto_libre(p: Vector3, radio: float) -> Vector3:
 			if not _choca(Vector2(cand.x, cand.z), radio):
 				return cand
 	return p
+
+func _es_encerrado(p: Vector2) -> bool:
+	# Un punto puede no estar dentro de ningun edificio y aun
+	# asi no tener salida: el patio interior del Hospital San
+	# Pedro, donde el teletransporte del plano dejaba a Jon
+	# encerrado entre cuatro paredes. Se mira en 8 direcciones
+	# si hay paso libre hasta 50 m; si todas tropiezan con
+	# edificios antes, el punto esta encerrado.
+	for k in 8:
+		var dir := Vector2(cos(TAU * float(k) / 8.0), sin(TAU * float(k) / 8.0))
+		var libre := true
+		var r := 4.0
+		while r <= 50.0:
+			if _choca(p + dir * r, 0.5):
+				libre = false
+				break
+			r += 4.0
+		if libre:
+			return false
+	return true
 
 func _objetivo_ruta() -> Vector3:
 	if _ruta_idx < _ruta.size():
@@ -2116,6 +2186,10 @@ func _unir(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedC
 	_caja_u(verts, normals, cols, uvs, Vector3(mid.x + salida.x * 0.3, base + 1.6, mid.y + salida.y * 0.3), Vector3(6.0, 3.2, 0.4), Color(0.10, 0.12, 0.16), atan2(salida.x, salida.y))
 	_caja_u(verts, normals, cols, uvs, Vector3(mid.x + salida.x * 1.8, base + 3.6, mid.y + salida.y * 1.8), Vector3(10.0, 0.25, 3.6), Color(0.30, 0.30, 0.33), atan2(salida.x, salida.y))
 	_rotulos_tile_actual.append({"n": "UNIR", "h": salida, "w": 16.0, "g": 5.0, "p": Vector3(mid.x + salida.x * 0.6, base + 13.9, mid.y + salida.y * 0.6)})
+	# La caja dibujada (49,3 x 58,8 girada) es mas grande que la
+	# huella de Catastro registrada como poligono: sin este solido
+	# con la medida y el giro de la caja, las paredes se atravesaban.
+	_registrar_solido(c.x, c.y, rot, 29.4, 24.65)
 	print("UNIR_OK")
 
 func _toyo_ito(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, uvs: PackedVector2Array, centro: Vector2, base: float) -> void:
@@ -2292,6 +2366,20 @@ func _hito_norias(verts: PackedVector3Array, normals: PackedVector3Array, cols: 
 	_suelo(verts, normals, cols, -899, -735, ys + 0.06, 38, 30, Color(0.58, 0.58, 0.60))
 	_viga(verts, normals, cols, Vector3(-910, ys + 0.1, -742), Vector3(-910, ys + 1.9, -734), Vector2(1, 0), 5.0, 0.3, Color(0.50, 0.50, 0.53))
 	_viga(verts, normals, cols, Vector3(-888, ys + 0.1, -728), Vector3(-888, ys + 1.9, -736), Vector2(1, 0), 5.0, 0.3, Color(0.50, 0.50, 0.53))
+	# El skate park equipado (pedido de Jon: la losa estaba
+	# vacia): funbox central con barandilla, barandilla plana
+	# de grind al norte, un bank al este y un cajon al sur.
+	var horm := Color(0.52, 0.52, 0.55)
+	var metal := Color(0.75, 0.76, 0.78)
+	_caja_en(verts, normals, cols, Vector3(-899, ys + 0.34, -735), Vector3(6.0, 0.55, 3.6), horm, 0.0)
+	_caja_en(verts, normals, cols, Vector3(-901.6, ys + 0.85, -735), Vector3(0.09, 0.5, 0.09), metal, 0.0)
+	_caja_en(verts, normals, cols, Vector3(-896.4, ys + 0.85, -735), Vector3(0.09, 0.5, 0.09), metal, 0.0)
+	_viga(verts, normals, cols, Vector3(-902.0, ys + 1.12, -735), Vector3(-896.0, ys + 1.12, -735), Vector2(0, 1), 0.09, 0.09, metal)
+	for px in [-907.6, -904.0, -900.4]:
+		_caja_en(verts, normals, cols, Vector3(px, ys + 0.30, -726.5), Vector3(0.08, 0.48, 0.08), metal, 0.0)
+	_viga(verts, normals, cols, Vector3(-908.0, ys + 0.56, -726.5), Vector3(-900.0, ys + 0.56, -726.5), Vector2(0, 1), 0.09, 0.09, metal)
+	_viga(verts, normals, cols, Vector3(-883.0, ys + 0.12, -741), Vector3(-883.0, ys + 2.0, -733), Vector2(1, 0), 6.0, 0.3, horm)
+	_caja_en(verts, normals, cols, Vector3(-899, ys + 0.28, -722.5), Vector3(8.0, 0.45, 0.6), horm, 0.0)
 	print("NORIAS_OK")
 
 var _tex_rayas_v: Texture2D = null
@@ -2336,6 +2424,100 @@ func _gaunas_gente() -> void:
 		k += 1
 		_fan_logrones(per)
 		_estaticos.append({"d": per, "raiz": per["raiz"], "tipo": "movil", "fase": _rng.randf() * 6.0})
+
+func _columna_ruina(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, base: Vector3, eje: Vector3, largo: float, radio: float, col: Color) -> void:
+	# Un fuste octogonal entre dos puntos (de pie si el eje es
+	# vertical, tumbado si es horizontal), con sus dos tapas.
+	var e := eje.normalized()
+	var ref := Vector3.RIGHT if absf(e.y) >= 0.9 else Vector3.UP
+	var u := ref.cross(e).normalized()
+	var v := e.cross(u).normalized()
+	var cen_b := base + e * (largo * 0.5)
+	var cen_t := base + e * largo
+	for k in range(8):
+		var a1 := TAU * float(k) / 8.0
+		var a2 := TAU * float(k + 1) / 8.0
+		var d1 := u * cos(a1) + v * sin(a1)
+		var d2 := u * cos(a2) + v * sin(a2)
+		var pa := base + d1 * radio
+		var pb := base + d2 * radio
+		var pc := cen_t + d2 * radio
+		var pd := cen_t + d1 * radio
+		_tri(verts, normals, cols, pa, pb, pc, false, col)
+		_tri(verts, normals, cols, pa, pc, pd, false, col)
+		_tri(verts, normals, cols, cen_t, pa + e * largo, pb + e * largo, false, col)
+		_tri(verts, normals, cols, base, pb, pa, false, col)
+
+func _hito_cantabria(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, gx: float, gz: float) -> void:
+	# Las ruinas romanas de la cima del Monte Cantabria
+	# (pedido de Jon): el podio de un templo con sus columnas
+	# rotas, dos en pie con su arquitrabe, muros de la cella,
+	# fustes caidos y cascotes, todo de piedra caliza.
+	var gy := _altura_terreno(gx, gz)
+	var piedra := Color(0.64, 0.60, 0.52)
+	var piedra2 := Color(0.58, 0.54, 0.47)
+	var piedra3 := Color(0.52, 0.48, 0.42)
+	_suelo(verts, normals, cols, gx, gz, gy + 0.07, 34, 26, Color(0.60, 0.56, 0.49))
+	_caja_en(verts, normals, cols, Vector3(gx, gy + 0.50, gz), Vector3(15.0, 1.0, 11.0), piedra2, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx, gy + 1.45, gz), Vector3(13.0, 0.9, 9.4), piedra, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx, gy + 2.32, gz), Vector3(11.4, 0.85, 8.0), piedra2, 0.0)
+	var base_c := gy + 2.75
+	var cols_c: Array = [
+		[Vector2(-4.2, -2.4), 4.4], [Vector2(0.0, -2.4), 4.4], [Vector2(4.2, -2.4), 1.3],
+		[Vector2(-4.2, 2.4), 3.1], [Vector2(0.0, 2.4), 0.7], [Vector2(4.2, 2.4), 2.0]]
+	for cc in cols_c:
+		var lp: Vector2 = cc[0]
+		_columna_ruina(verts, normals, cols, Vector3(gx + lp.x, base_c, gz + lp.y), Vector3.UP, float(cc[1]), 0.42, piedra)
+		_caja_en(verts, normals, cols, Vector3(gx + lp.x, base_c + 0.12, gz + lp.y), Vector3(1.05, 0.24, 1.05), piedra3, 0.0)
+	for lp2 in [Vector2(-4.2, -2.4), Vector2(0.0, -2.4)]:
+		_caja_en(verts, normals, cols, Vector3(gx + lp2.x, base_c + 4.58, gz + lp2.y), Vector3(1.15, 0.35, 1.15), piedra, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx - 2.1, base_c + 5.0, gz - 2.4), Vector3(5.8, 0.5, 1.0), piedra2, 0.0)
+	# Muros rotos de la cella, al fondo del podio y a los lados
+	_caja_en(verts, normals, cols, Vector3(gx - 4.5, gy + 0.87, gz - 5.2), Vector3(3.0, 1.6, 0.6), piedra3, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx - 0.5, gy + 0.52, gz - 5.2), Vector3(2.5, 0.9, 0.6), piedra2, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx + 3.2, gy + 1.02, gz - 5.2), Vector3(3.4, 1.9, 0.6), piedra3, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx - 6.5, gy + 0.67, gz - 3.5), Vector3(0.6, 1.2, 3.5), piedra2, 0.0)
+	_caja_en(verts, normals, cols, Vector3(gx + 6.5, gy + 0.42, gz - 3.5), Vector3(0.6, 0.7, 3.5), piedra3, 0.0)
+	# Fustes caidos y cascotes por la explanada
+	_columna_ruina(verts, normals, cols, Vector3(gx - 7.5, gy + 0.48, gz + 4.5), Vector3(1, 0, 0.15), 2.6, 0.42, piedra)
+	_columna_ruina(verts, normals, cols, Vector3(gx + 6.8, gy + 0.48, gz + 5.5), Vector3(-0.3, 0, 1), 1.9, 0.42, piedra2)
+	_columna_ruina(verts, normals, cols, Vector3(gx + 8.5, gy + 0.07, gz - 3.0), Vector3.UP, 0.8, 0.42, piedra)
+	_columna_ruina(verts, normals, cols, Vector3(gx - 8.0, gy + 0.07, gz - 4.0), Vector3.UP, 0.5, 0.46, piedra3)
+	_caja_en(verts, normals, cols, Vector3(gx - 3.0, gy + 0.25, gz + 7.5), Vector3(1.15, 0.35, 1.15), piedra, 0.4)
+	var cascotes: Array = [
+		[Vector2(-9, 3), 0.8], [Vector2(-6, -6.5), 0.6], [Vector2(3, 6.5), 1.0], [Vector2(7, -5.5), 0.7],
+		[Vector2(-2, 8), 0.5], [Vector2(10.5, 1), 0.9], [Vector2(-11, -2), 0.65], [Vector2(5, -8), 0.55],
+		[Vector2(1.5, -7), 0.75]]
+	var ki := 0
+	for casc in cascotes:
+		var cp: Vector2 = casc[0]
+		var tam_c := float(casc[1])
+		_caja_en(verts, normals, cols, Vector3(gx + cp.x, gy + 0.07 + tam_c * 0.3, gz + cp.y), Vector3(tam_c, tam_c * 0.62, tam_c * 0.8), piedra3 if ki % 2 == 0 else piedra2, float(ki) * 0.7)
+		ki += 1
+	_ruinas = true
+
+func _skate_gente() -> void:
+	# Los tres chavales del skate park de Las Norias: uno
+	# subiendo y bajando la rampa, otro dando vueltas al
+	# funbox con sus ollies y otro grindando la barandilla.
+	# Cada uno con su tabla; la animacion vive en
+	# _mover_peatones, en su propio bloque (no son estaticos:
+	# alli la respiracion les pisaria la altura).
+	var ys := _altura_terreno(-899.0, -735.0)
+	var datos: Array = [
+		[Color(0.85, 0.30, 0.20), Color(0.16, 0.11, 0.07), 0],
+		[Color(0.20, 0.45, 0.85), Color(0.45, 0.30, 0.16), 1],
+		[Color(0.95, 0.80, 0.20), Color(0.10, 0.08, 0.06), 2]]
+	for d in datos:
+		var per := _persona_en(Vector3(-899, 0, -735), Vector2.ZERO, d[0], d[1])
+		var raiz: Node3D = per["raiz"]
+		var tabla := Node3D.new()
+		tabla.position = Vector3(0, -0.93, 0.02)
+		tabla.add_child(_pieza(Vector3(0.24, 0.04, 0.84), Vector3.ZERO, Color(0.16, 0.16, 0.18)))
+		tabla.add_child(_pieza(Vector3(0.09, 0.07, 0.09), Vector3(0, -0.05, 0.26), Color(0.85, 0.85, 0.85)))
+		tabla.add_child(_pieza(Vector3(0.09, 0.07, 0.09), Vector3(0, -0.05, -0.26), Color(0.85, 0.85, 0.85)))
+		raiz.add_child(tabla)
+		_skaters.append({"d": per, "raiz": raiz, "tabla": tabla, "modo": int(d[2]), "fase": _rng.randf() * 6.0, "ys": ys})
 
 func _norias_gente() -> void:
 	# La vida del complejo: tenistas, jugadores de padel y de
@@ -2639,6 +2821,7 @@ const HITOS: Array = [
 	{"n": "chapiteles", "x": -78.0, "z": 51.0},
 	{"n": "espartero", "x": -247.0, "z": 261.0},
 	{"n": "zubia", "x": -4.0, "z": 146.0},
+	{"n": "cantabria", "x": 1350, "z": -1345},
 	{"n": "ayto", "x": 270.0, "z": 55.0},
 	{"n": "breton", "x": -472.0, "z": 218.0},
 	{"n": "sanblas", "x": -363.0, "z": 144.0},
@@ -2789,8 +2972,13 @@ func _hitos_tile(cont: Node3D, t: Vector2i) -> void:
 			"norias":
 				_hito_norias(verts, normals, cols, hx, hz)
 				_norias_gente()
+				_skate_gente()
 				hecho = true
 				print("HITO_OK norias")
+			"cantabria":
+				_hito_cantabria(verts, normals, cols, hx, hz)
+				hecho = true
+				print("HITO_OK cantabria")
 			"palacio":
 				_marca(verts, normals, cols, hx, hz, Vector2(1, 0), "Palacio de los Deportes", 4.0, 22.0, 3.7)
 				hecho = true
@@ -3273,8 +3461,8 @@ func _camara_y_luz() -> void:
 	env.ambient_light_color = Color(0.85, 0.72, 0.60)
 	env.ambient_light_energy = 0.85
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.96, 0.62, 0.40)
-	env.fog_density = 0.0008
+	env.fog_light_color = Color(0.97, 0.71, 0.54)
+	env.fog_density = 0.00032
 	entorno.environment = env
 	add_child(entorno)
 	# Interfaz en pantalla: pastilla de calle, teléfono, minimapa,
@@ -3880,6 +4068,9 @@ var _estaticos: Array = []
 var _perros: Array = []
 var _tic_vis := 0.0
 var _columpios: Array = []
+var _skaters: Array = []
+var _parque_columpios: Array = []
+var _ruinas := false
 var _balon_gal: Dictionary = {}
 var _gallarza_verde := 0
 var _pajaros: Array = []
@@ -7685,6 +7876,12 @@ func _al_elegir_lugar_mapa(poi: Dictionary) -> void:
 	_en_vuelta = false
 	var destino := Vector3(float(poi["x"]), 0, float(poi["z"]))
 	var libre := _punto_libre(destino, 0.5)
+	if _choca(Vector2(libre.x, libre.z), 0.5) or _es_encerrado(Vector2(libre.x, libre.z)):
+		# Dentro de un edificio o encerrado en un patio sin
+		# salida: se aparece en el nodo de calle mas cercano
+		# al lugar, que siempre esta libre y conectado.
+		var nodo: Vector2 = _nodos[_nodo_cercano(Vector2(destino.x, destino.z))]
+		libre = Vector3(nodo.x, 0, nodo.y)
 	_jugador.position = Vector3(libre.x, _altura(libre.x, libre.z) + 0.95, libre.z)
 	_cerrar_mapa()
 	_aviso_set("Has ido directo a " + String(poi["n"]), 3.0)
@@ -8106,30 +8303,92 @@ func _mover_trafico(delta: float) -> void:
 
 # ---------- Autobuses urbanos: la flota que recorre la ciudad ----------
 
-func _modelo_bus_fundido(color_linea: Color = Color(0.15, 0.55, 0.30)) -> MeshInstance3D:
-	# El autobús urbano como UNA malla fundida (blanco con la
-	# banda y el letrero del color de SU línea): 25 sueltos no
-	# pueden ser 25×15 piezas en la web.
+func _modelo_bus_fundido(color_linea: Color = Color(0.15, 0.55, 0.30), con_conductor := true) -> MeshInstance3D:
+	# El autobús urbano como UNA malla fundida (25 sueltos no
+	# pueden ser 25x15 piezas en la web), pero trabajado
+	# (pedido de Jon): ruedas REDONDAS (cilindros de 8 lados),
+	# ventanillas de verdad — la banda es hueca, con sus
+	# pilares — y dentro se ven el conductor tras el
+	# parabrisas y los pasajeros sentados en las ventanillas.
 	var blanco := Color(0.92, 0.93, 0.94)
 	var verde := color_linea
-	var oscuro := Color(0.16, 0.18, 0.22)
-	var cristal := Color(0.35, 0.55, 0.70)
-	var partes: Array = [
-		[Vector3(0, 1.45, 0), Vector3(2.5, 1.9, 11.0), blanco],
-		[Vector3(0, 1.98, 0), Vector3(2.54, 0.70, 10.2), cristal],
-		[Vector3(0, 0.62, 0), Vector3(2.54, 0.42, 11.0), verde],
-		[Vector3(0, 2.46, 0), Vector3(2.4, 0.12, 10.6), blanco],
-		[Vector3(1.26, 1.30, 3.6), Vector3(0.06, 1.80, 1.15), oscuro],
-		[Vector3(0, 2.18, 5.52), Vector3(1.6, 0.45, 0.08), verde],
-		[Vector3(-0.8, 0.95, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
-		[Vector3(0.8, 0.95, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
-		[Vector3(-0.8, 0.95, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
-		[Vector3(0.8, 0.95, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
+	var oscuro := Color(0.13, 0.14, 0.17)
+	var cristal := Color(0.55, 0.68, 0.76)
+	var cajas: Array = [
+		# interior oscuro (lo que se ve entre los pasajeros)
+		[Vector3(0, 1.30, 0), Vector3(1.70, 1.85, 10.6), oscuro],
+		# falda inferior del color de la línea
+		[Vector3(0, 0.60, 0), Vector3(2.54, 0.55, 11.0), verde],
+		# paneles laterales bajo las ventanillas y travesaño
+		[Vector3(-1.26, 1.06, 0), Vector3(0.06, 0.42, 10.9), blanco],
+		[Vector3(1.26, 1.06, 0), Vector3(0.06, 0.42, 10.9), blanco],
+		[Vector3(-1.26, 2.24, 0), Vector3(0.06, 0.26, 10.9), blanco],
+		[Vector3(1.26, 2.24, 0), Vector3(0.06, 0.26, 10.9), blanco],
+		[Vector3(0, 2.44, 0), Vector3(2.42, 0.14, 10.7), blanco],
+		# frente y trasera: panel bajo, panel sobre el cristal
+		[Vector3(0, 1.06, 5.47), Vector3(2.46, 0.42, 0.06), blanco],
+		[Vector3(0, 1.06, -5.47), Vector3(2.46, 0.42, 0.06), blanco],
+		[Vector3(0, 2.24, 5.47), Vector3(2.46, 0.26, 0.06), blanco],
+		[Vector3(0, 2.24, -5.47), Vector3(2.46, 0.26, 0.06), blanco],
+		# luneta trasera (cristal cerrado) y pilar del parabrisas
+		[Vector3(0, 1.74, -5.48), Vector3(1.90, 0.74, 0.04), cristal],
+		[Vector3(0, 1.74, 5.47), Vector3(0.10, 0.74, 0.06), blanco],
+		# letrero de línea, faros y pilotos
+		[Vector3(0, 2.24, 5.53), Vector3(1.6, 0.40, 0.06), verde],
+		[Vector3(-0.8, 0.92, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
+		[Vector3(0.8, 0.92, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
+		[Vector3(-0.8, 0.92, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
+		[Vector3(0.8, 0.92, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
+		# puerta delantera con su cristal (lado de la acera)
+		[Vector3(-1.27, 1.30, 3.95), Vector3(0.05, 1.95, 1.25), oscuro],
+		[Vector3(-1.28, 1.78, 3.95), Vector3(0.04, 0.75, 1.05), cristal],
+		# retrovisores
+		[Vector3(-1.36, 2.02, 5.30), Vector3(0.07, 0.30, 0.16), oscuro],
+		[Vector3(1.36, 2.02, 5.30), Vector3(0.07, 0.30, 0.16), oscuro],
 	]
-	for sx in [-1.18, 1.18]:
+	# Pilares entre ventanillas (los huecos son las ventanas)
+	for lado in [-1.26, 1.26]:
+		for pz in [-5.30, -3.95, -2.65, -1.35, 0.0, 1.35, 2.65, 3.95, 5.30]:
+			if lado < 0.0 and pz > 3.2 and pz < 4.7:
+				continue  # ese tramo lo ocupa la puerta
+			cajas.append([Vector3(lado, 1.74, pz), Vector3(0.06, 0.74, 0.22), blanco])
+	var pieles: Array = [Color(0.93, 0.74, 0.60), Color(0.88, 0.64, 0.47), Color(0.72, 0.50, 0.36), Color(0.84, 0.60, 0.44)]
+	var camisas: Array = [Color(0.80, 0.30, 0.25), Color(0.25, 0.40, 0.75), Color(0.30, 0.65, 0.40), Color(0.90, 0.75, 0.30), Color(0.60, 0.35, 0.70), Color(0.90, 0.90, 0.92), Color(0.95, 0.55, 0.20), Color(0.35, 0.35, 0.38)]
+	var pelos: Array = [Color(0.16, 0.11, 0.07), Color(0.45, 0.30, 0.16), Color(0.10, 0.08, 0.06), Color(0.70, 0.60, 0.35), Color(0.85, 0.84, 0.80)]
+	if con_conductor:
+		# El conductor, tras el parabrisas, con su volante
+		cajas.append([Vector3(0.55, 1.52, 4.62), Vector3(0.46, 0.55, 0.30), Color(0.92, 0.92, 0.94)])
+		cajas.append([Vector3(0.55, 1.94, 4.62), Vector3(0.25, 0.27, 0.25), pieles[0]])
+		cajas.append([Vector3(0.55, 2.09, 4.62), Vector3(0.27, 0.06, 0.27), pelos[0]])
+		cajas.append([Vector3(0.55, 1.28, 5.02), Vector3(0.44, 0.30, 0.07), oscuro])
+	# Pasajeros sentados: en cada ventanilla, según el azar
+	# de este bus (cada autobús lleva gente distinta)
+	for lado in [-1.0, 1.0]:
+		for pz in [-4.60, -3.30, -2.00, -0.70, 0.65, 2.00, 3.30]:
+			if lado < 0.0 and pz > 2.6:
+				continue  # delante, en ese lado, va la puerta
+			if _rng.randf() < 0.42:
+				continue
+			var px: float = 1.02 * lado
+			var camisa_p: Color = camisas[_rng.randi() % camisas.size()]
+			var piel_p: Color = pieles[_rng.randi() % pieles.size()]
+			var pelo_p: Color = pelos[_rng.randi() % pelos.size()]
+			var dy := (_rng.randf() - 0.5) * 0.07
+			cajas.append([Vector3(px, 1.50 + dy, pz), Vector3(0.46, 0.52, 0.30), camisa_p])
+			cajas.append([Vector3(px, 1.90 + dy, pz), Vector3(0.24, 0.26, 0.24), piel_p])
+			cajas.append([Vector3(px, 2.04 + dy, pz), Vector3(0.26, 0.06, 0.26), pelo_p])
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var cols := PackedColorArray()
+	for cj in cajas:
+		var parte: Array = cj
+		_caja_en(verts, normals, cols, parte[0], parte[1], parte[2], 0.0)
+	# Ruedas redondas: cilindros con su buje claro
+	for sx in [-1.13, 1.13]:
 		for sz in [-3.6, 3.6]:
-			partes.append([Vector3(sx, 0.5, sz), Vector3(0.30, 1.0, 1.0), oscuro])
-	return _fundida(partes)
+			_columna_ruina(verts, normals, cols, Vector3(sx - 0.18, 0.5, sz), Vector3.RIGHT, 0.36, 0.50, Color(0.09, 0.09, 0.10))
+			_columna_ruina(verts, normals, cols, Vector3(sx - 0.21, 0.5, sz), Vector3.RIGHT, 0.42, 0.22, Color(0.55, 0.56, 0.58))
+	return _malla_de(verts, normals, cols, Color.WHITE)
 
 func _proyeccion(p: Vector2, a: Vector2, b: Vector2, s0: float) -> Array:
 	# [distancia del punto p al segmento ab, s a lo largo del recorrido]
@@ -8161,7 +8420,7 @@ func _crear_lineas_bus() -> void:
 		for i in range(anclas.size() - 1):
 			var a2: Vector2 = anclas[i]
 			var b2: Vector2 = anclas[i + 1]
-			var tramo := _calcular_ruta(Vector3(a2.x, 0, a2.y), Vector3(b2.x, 0, b2.y))
+			var tramo := _ruta_calle(Vector3(a2.x, 0, a2.y), Vector3(b2.x, 0, b2.y))
 			for p3 in tramo:
 				var p2 := Vector2((p3 as Vector3).x, (p3 as Vector3).z)
 				if pts.is_empty() or (pts[pts.size() - 1] as Vector2).distance_to(p2) > 0.5:
@@ -8727,24 +8986,11 @@ func _punto_en_ruta_bus(s: float) -> Vector2:
 	return _bus_ruta[_bus_ruta.size() - 1]
 
 func _modelo_bus() -> Node3D:
+	# El autobús que conduce Jon (el del trabajo de línea):
+	# el mismo modelo trabajado de la flota, con su color
+	# naranja en la banda y sin conductor (el conductor es él).
 	var raiz := Node3D.new()
-	var carro := Color(0.92, 0.55, 0.12)
-	var oscuro := Color(0.16, 0.18, 0.22)
-	var cristal := Color(0.35, 0.55, 0.70)
-	var claro := Color(0.90, 0.90, 0.90)
-	raiz.add_child(_pieza(Vector3(2.5, 1.9, 11.0), Vector3(0, 1.45, 0), carro))
-	raiz.add_child(_pieza(Vector3(2.54, 0.70, 10.2), Vector3(0, 1.98, 0), cristal))
-	raiz.add_child(_pieza(Vector3(2.54, 0.50, 11.0), Vector3(0, 0.52, 0), oscuro))
-	raiz.add_child(_pieza(Vector3(2.4, 0.12, 10.6), Vector3(0, 2.46, 0), claro))
-	raiz.add_child(_pieza(Vector3(0.06, 1.80, 1.15), Vector3(1.26, 1.30, 3.6), oscuro))
-	raiz.add_child(_pieza(Vector3(1.6, 0.45, 0.08), Vector3(0, 2.18, 5.52), oscuro))
-	raiz.add_child(_pieza(Vector3(0.40, 0.25, 0.08), Vector3(-0.8, 0.95, 5.52), Color(1.0, 0.96, 0.78)))
-	raiz.add_child(_pieza(Vector3(0.40, 0.25, 0.08), Vector3(0.8, 0.95, 5.52), Color(1.0, 0.96, 0.78)))
-	raiz.add_child(_pieza(Vector3(0.40, 0.22, 0.08), Vector3(-0.8, 0.95, -5.52), Color(0.80, 0.15, 0.12)))
-	raiz.add_child(_pieza(Vector3(0.40, 0.22, 0.08), Vector3(0.8, 0.95, -5.52), Color(0.80, 0.15, 0.12)))
-	for sx in [-1.18, 1.18]:
-		for sz in [-3.6, 3.6]:
-			raiz.add_child(_pieza(Vector3(0.30, 1.0, 1.0), Vector3(sx, 0.5, sz), oscuro))
+	raiz.add_child(_modelo_bus_fundido(Color(0.92, 0.55, 0.12), false))
 	return raiz
 
 func _iniciar_bus(sentido: int) -> void:
@@ -11557,6 +11803,12 @@ func _actualizar_visibilidad() -> void:
 	for col in _columpios:
 		var piv: Node3D = col["pivote"]
 		piv.visible = piv.position.distance_squared_to(ref) < 200.0 * 200.0
+	for sk in _skaters:
+		var rz3: Node3D = sk["raiz"]
+		rz3.visible = rz3.position.distance_squared_to(ref) < 200.0 * 200.0
+	for pc in _parque_columpios:
+		var piv3: Node3D = pc["pivote"]
+		piv3.visible = piv3.position.distance_squared_to(ref) < 200.0 * 200.0
 	if not _balon_gal.is_empty():
 		var bn: Node3D = _balon_gal["nodo"]
 		bn.visible = bn.position.distance_squared_to(ref) < 200.0 * 200.0
@@ -11742,6 +11994,71 @@ func _mover_peatones(delta: float) -> void:
 		if not dc.is_empty():
 			(dc["pi"] as Node3D).rotation.x = -1.30 + ond * 0.35
 			(dc["pd"] as Node3D).rotation.x = -1.30 + ond * 0.35
+	# Los chavales del skate park de Las Norias: cada uno con
+	# su circuito; la tabla va pegada a los pies y el cuerpo
+	# se agacha al coger impulso y se recoge en el aire.
+	for sk in _skaters:
+		var dsk: Dictionary = sk["d"]
+		var raiz_s: Node3D = sk["raiz"]
+		var ys_s := float(sk["ys"])
+		var tt := _tiempo + float(sk["fase"]) * 3.7
+		var px := -899.0
+		var pz := -735.0
+		var surf := ys_s + 0.06
+		var aire := 0.0
+		var mira := 0.0
+		var pitch := 0.0
+		match int(sk["modo"]):
+			0:
+				var zz := -738.0 + sin(tt * 0.85) * 4.2
+				pz = zz
+				px = -910.0
+				if zz > -742.0:
+					surf = ys_s + 0.25 + clampf((zz + 742.0) / 8.0, 0.0, 1.0) * 1.8
+				var va := cos(tt * 0.85)
+				mira = 0.0 if va > 0.0 else PI
+				var delante := zz + (0.7 if va > 0.0 else -0.7)
+				var surf_d := ys_s + 0.06
+				if delante > -742.0:
+					surf_d = ys_s + 0.25 + clampf((delante + 742.0) / 8.0, 0.0, 1.0) * 1.8
+				pitch = -atan2(surf_d - surf, 0.7) * (1.0 if mira == 0.0 else -1.0)
+			1:
+				var aa := tt * 0.55
+				px = -899.0 + cos(aa) * 11.5
+				pz = -735.0 + sin(aa) * 8.5
+				mira = atan2(-sin(aa), cos(aa))
+				aire = pow(maxf(0.0, sin(aa * 2.0 + 1.0)), 6.0) * 0.55
+			2:
+				var xx := -899.0 + sin(tt * 0.5) * 14.0
+				px = xx
+				pz = -726.5
+				var dentro := minf(xx + 908.0, -900.0 - xx)
+				var fr := clampf((dentro + 0.45) / 0.9, 0.0, 1.0)
+				surf = lerpf(ys_s + 0.06, ys_s + 0.58, fr * fr * (3.0 - 2.0 * fr))
+				aire = 0.38 * (exp(-pow((xx + 908.6) / 0.8, 2.0)) + exp(-pow((xx + 899.4) / 0.8, 2.0)))
+				mira = PI * 0.5 if cos(tt * 0.5) > 0.0 else -PI * 0.5
+		raiz_s.position = Vector3(px, surf + aire + 0.95, pz)
+		raiz_s.rotation.y = mira
+		raiz_s.rotation.x = pitch
+		var agach := 0.25 + aire * 1.1
+		(dsk["pi"] as Node3D).rotation.x = -0.50 - agach * 0.55
+		(dsk["pd"] as Node3D).rotation.x = -0.28 - agach * 0.40
+		(dsk["bi"] as Node3D).rotation.z = 0.50 + sin(tt * 2.1) * 0.10
+		(dsk["bd"] as Node3D).rotation.z = -0.50 - cos(tt * 1.7) * 0.10
+		(dsk["bi"] as Node3D).rotation.x = -0.15
+		(dsk["bd"] as Node3D).rotation.x = -0.15
+		(dsk["cabeza"] as Node3D).rotation.y = sin(tt * 0.6) * 0.2
+		(sk["tabla"] as Node3D).rotation.x = -aire * 0.30
+	# Los columpios de los parques infantiles: vaiven continuo
+	# con su nino encima, como los de Gallarza pero sin jinete.
+	for pc in _parque_columpios:
+		var piv_p: Node3D = pc["pivote"]
+		var ond_p := sin(_tiempo * 1.35 + float(pc["fase"]))
+		piv_p.rotation.x = ond_p * float(pc["amp"])
+		var dp2: Dictionary = pc["d"]
+		if not dp2.is_empty():
+			(dp2["pi"] as Node3D).rotation.x = -1.30 + ond_p * 0.35
+			(dp2["pd"] as Node3D).rotation.x = -1.30 + ond_p * 0.35
 	if not _balon_gal.is_empty():
 		_balon_gal["t"] = float(_balon_gal["t"]) + delta / 1.15
 		if float(_balon_gal["t"]) >= 1.0:
@@ -12114,6 +12431,155 @@ func _crear_vias() -> void:
 		add_child(_malla_de(verts, normals, cols, Color.WHITE))
 	print("VIAS_OK m=", int(total))
 
+func _crear_parques_infantiles() -> void:
+	# Los parques infantiles con nombre en el plano: hasta
+	# ahora solo eran un punto dorado y al llegar no habia NI
+	# un columpio (visto por Jon en el Parque Infantil de
+	# columpios). Cada uno lleva su suelo de goma, un columpio
+	# doble con un nino balanceandose, un tobogan, un
+	# balancin y un adulto vigilando.
+	var sitios: Array = [
+		[Vector2(677, 1092), 0.0],
+		[Vector2(-936, 1199), 0.7],
+		[Vector2(-815, 655), -0.4],
+		[Vector2(2370, 331), 0.3],
+		[Vector2(1366, 1854), 0.9]]
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var cols := PackedColorArray()
+	var col_poste := Color(0.30, 0.55, 0.75)
+	var camisas_p: Array = [Color(0.85, 0.35, 0.20), Color(0.25, 0.55, 0.80), Color(0.95, 0.75, 0.25), Color(0.35, 0.70, 0.40), Color(0.75, 0.40, 0.75)]
+	var pelos_p: Array = [Color(0.16, 0.11, 0.07), Color(0.45, 0.30, 0.16), Color(0.70, 0.60, 0.35)]
+	var k := 0
+	for sitio in sitios:
+		var cen: Vector2 = sitio[0]
+		var ang := float(sitio[1])
+		var gy := _altura_terreno(cen.x, cen.y)
+		_caja_en(verts, normals, cols, Vector3(cen.x, gy + 0.03, cen.y), Vector3(19, 0.08, 14), Color(0.52, 0.40, 0.32), -ang)
+		# El columpio doble: patas en A y barra, todo fundido
+		var barra_c := cen + Vector2(0, -3.2).rotated(ang)
+		for sx in [-2.3, 2.3]:
+			for sz in [-0.75, 0.75]:
+				var pie_p: Vector2 = cen + Vector2(sx, -3.2 + sz).rotated(ang)
+				var top_p: Vector2 = cen + Vector2(sx, -3.2).rotated(ang)
+				_viga(verts, normals, cols, Vector3(pie_p.x, gy + 0.05, pie_p.y), Vector3(top_p.x, gy + 2.2, top_p.y), Vector2(0, 1), 0.09, 0.09, col_poste)
+		var b1: Vector2 = cen + Vector2(-2.3, -3.2).rotated(ang)
+		var b2: Vector2 = cen + Vector2(2.3, -3.2).rotated(ang)
+		_viga(verts, normals, cols, Vector3(b1.x, gy + 2.2, b1.y), Vector3(b2.x, gy + 2.2, b2.y), Vector2(0, 1), 0.10, 0.10, col_poste)
+		# Los dos asientos colgando (pivotes, como en Gallarza)
+		for i in 2:
+			var wp: Vector2 = cen + Vector2(-1.15 + i * 2.3, -3.2).rotated(ang)
+			var piv := Node3D.new()
+			piv.position = Vector3(wp.x, gy + 2.2, wp.y)
+			piv.rotation.y = -ang
+			for cx in [-0.20, 0.20]:
+				piv.add_child(_pieza(Vector3(0.045, 1.45, 0.045), Vector3(cx, -0.72, 0), Color(0.55, 0.56, 0.58)))
+			piv.add_child(_pieza(Vector3(0.48, 0.05, 0.26), Vector3(0, -1.46, 0), Color(0.20, 0.22, 0.26)))
+			add_child(piv)
+			if i == 0:
+				var nin := _hacer_persona(camisas_p[k % camisas_p.size()], Color(0.20, 0.24, 0.40), pelos_p[k % pelos_p.size()])
+				var rz: Node3D = nin["raiz"]
+				rz.scale = Vector3.ONE * 0.62
+				rz.position = Vector3(0, -1.40, 0.03)
+				(nin["pi"] as Node3D).rotation.x = -1.30
+				(nin["pd"] as Node3D).rotation.x = -1.30
+				(nin["bi"] as Node3D).rotation.x = -2.65
+				(nin["bd"] as Node3D).rotation.x = -2.65
+				piv.add_child(rz)
+				_parque_columpios.append({"pivote": piv, "d": nin, "fase": _rng.randf() * 6.0, "amp": 0.42})
+			else:
+				_parque_columpios.append({"pivote": piv, "d": {}, "fase": _rng.randf() * 6.0, "amp": 0.15})
+		# El tobogan: plataforma, rampa roja y escalones
+		var plat: Vector2 = cen + Vector2(4.6, 1.9).rotated(ang)
+		_caja_en(verts, normals, cols, Vector3(plat.x, gy + 0.50, plat.y), Vector3(1.1, 1.0, 1.1), col_poste, -ang)
+		var r1: Vector2 = cen + Vector2(4.6, 2.6).rotated(ang)
+		var r2: Vector2 = cen + Vector2(4.6, 5.6).rotated(ang)
+		_viga(verts, normals, cols, Vector3(r1.x, gy + 1.02, r1.y), Vector3(r2.x, gy + 0.12, r2.y), Vector2(1, 0).rotated(ang), 0.55, 0.08, Color(0.80, 0.25, 0.20))
+		for e in range(3):
+			var ep: Vector2 = cen + Vector2(4.6, 1.15 - float(e) * 0.42).rotated(ang)
+			_caja_en(verts, normals, cols, Vector3(ep.x, gy + 0.72 - float(e) * 0.24, ep.y), Vector3(0.7, 0.10, 0.34), Color(0.70, 0.71, 0.73), -ang)
+		# El balancin, inclinado, esperando dos ninos
+		var ful: Vector2 = cen + Vector2(-4.6, 2.8).rotated(ang)
+		_caja_en(verts, normals, cols, Vector3(ful.x, gy + 0.25, ful.y), Vector3(0.35, 0.5, 0.35), col_poste, -ang)
+		var s1: Vector2 = cen + Vector2(-6.4, 2.8).rotated(ang)
+		var s2: Vector2 = cen + Vector2(-2.8, 2.8).rotated(ang)
+		_viga(verts, normals, cols, Vector3(s1.x, gy + 0.68, s1.y), Vector3(s2.x, gy + 0.42, s2.y), Vector2(0, 1).rotated(ang), 0.35, 0.07, Color(0.25, 0.55, 0.85))
+		# Un adulto vigilando junto al columpio
+		var adulto := _persona_en(Vector3(cen.x, 0, cen.y), Vector2(3.4, -6.2).rotated(ang), camisas_p[(k + 2) % camisas_p.size()], pelos_p[k % pelos_p.size()])
+		(adulto["raiz"] as Node3D).rotation.y = atan2(barra_c.x - (adulto["raiz"] as Node3D).position.x, barra_c.y - (adulto["raiz"] as Node3D).position.z)
+		_estaticos.append({"d": adulto, "raiz": adulto["raiz"], "tipo": "espera", "fase": _rng.randf() * 6.0})
+		k += 1
+	add_child(_malla_de(verts, normals, cols, Color.WHITE))
+	print("PARQUES_OK n=", sitios.size(), " columpios=", _parque_columpios.size())
+
+func _hospital_gente() -> void:
+	# La vida a la puerta del Hospital San Pedro (pedido de
+	# Jon): dos medicos de bata blanca charlando, una
+	# enfermera con un paciente en silla de ruedas y dos
+	# madres con sus ninos esperando.
+	var base := Vector3(1168, 0, 1768)
+	var blanco := Color(0.95, 0.95, 0.97)
+	var pelos_h: Array = [Color(0.16, 0.11, 0.07), Color(0.45, 0.30, 0.16), Color(0.85, 0.84, 0.80), Color(0.10, 0.08, 0.06)]
+	var doc_a := _persona_en(base, Vector2(0, 0), blanco, pelos_h[0])
+	var doc_b := _persona_en(base, Vector2(1.4, 0.5), blanco, pelos_h[2])
+	var ra: Node3D = doc_a["raiz"]
+	var rb: Node3D = doc_b["raiz"]
+	ra.rotation.y = atan2(rb.position.x - ra.position.x, rb.position.z - ra.position.z)
+	rb.rotation.y = atan2(ra.position.x - rb.position.x, ra.position.z - rb.position.z)
+	_estaticos.append({"d": doc_a, "raiz": ra, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	_estaticos.append({"d": doc_b, "raiz": rb, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	# La silla de ruedas con su paciente (las ruedas, esta
+	# vez, son cilindros de verdad)
+	var silla := Node3D.new()
+	var sp := _punto_libre(base + Vector3(7, 0, 3), 0.4)
+	silla.position = Vector3(sp.x, _altura(sp.x, sp.z), sp.z)
+	silla.rotation.y = -PI * 0.5
+	silla.add_child(_pieza(Vector3(0.52, 0.07, 0.50), Vector3(0, 0.50, 0), Color(0.20, 0.22, 0.26)))
+	silla.add_child(_pieza(Vector3(0.52, 0.55, 0.07), Vector3(0, 0.82, -0.24), Color(0.20, 0.22, 0.26)))
+	silla.add_child(_pieza(Vector3(0.46, 0.06, 0.30), Vector3(0, 0.16, 0.30), Color(0.35, 0.36, 0.38)))
+	for lado_s in [-0.29, 0.29]:
+		var rueda := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.31
+		cm.bottom_radius = 0.31
+		cm.height = 0.05
+		cm.radial_segments = 14
+		var mat_r := StandardMaterial3D.new()
+		mat_r.albedo_color = Color(0.12, 0.12, 0.13)
+		cm.material = mat_r
+		rueda.mesh = cm
+		rueda.rotation.z = PI * 0.5
+		rueda.position = Vector3(lado_s, 0.31, -0.06)
+		silla.add_child(rueda)
+		silla.add_child(_pieza(Vector3(0.05, 0.15, 0.15), Vector3(lado_s * 0.85, 0.08, 0.30), Color(0.12, 0.12, 0.13)))
+	add_child(silla)
+	var pac := _hacer_persona(Color(0.75, 0.72, 0.70), Color(0.40, 0.42, 0.48), pelos_h[1])
+	var rp: Node3D = pac["raiz"]
+	rp.position = Vector3(0, 0.55, 0.03)
+	(pac["pi"] as Node3D).rotation.x = -1.30
+	(pac["pd"] as Node3D).rotation.x = -1.30
+	silla.add_child(rp)
+	_estaticos.append({"d": pac, "raiz": rp, "tipo": "silla", "fase": _rng.randf() * 6.0})
+	var enf := _persona_en(base, Vector2(8.6, 2.2), Color(0.55, 0.75, 0.85), pelos_h[3])
+	(enf["raiz"] as Node3D).rotation.y = -PI * 0.5
+	_estaticos.append({"d": enf, "raiz": enf["raiz"], "tipo": "espera", "fase": _rng.randf() * 6.0})
+	# Dos madres con sus ninos
+	var madres: Array = [
+		[Vector2(-5, 6), Color(0.80, 0.40, 0.55), Color(0.30, 0.60, 0.85)],
+		[Vector2(3, 9.5), Color(0.45, 0.65, 0.35), Color(0.90, 0.70, 0.25)]]
+	for md in madres:
+		var madre := _persona_en(base, md[0], md[1], pelos_h[_rng.randi() % pelos_h.size()])
+		_estaticos.append({"d": madre, "raiz": madre["raiz"], "tipo": "espera", "fase": _rng.randf() * 6.0})
+		var nin := _hacer_persona(md[2], Color(0.25, 0.30, 0.45), pelos_h[_rng.randi() % pelos_h.size()])
+		var rn: Node3D = nin["raiz"]
+		rn.scale = Vector3.ONE * 0.60
+		var mp: Vector3 = (madre["raiz"] as Node3D).position
+		rn.position = Vector3(mp.x + 0.62, _altura(mp.x + 0.62, mp.z + 0.25) + 0.57, mp.z + 0.25)
+		rn.rotation.y = _rng.randf() * TAU
+		add_child(rn)
+		_estaticos.append({"d": nin, "raiz": rn, "tipo": "espera", "fase": _rng.randf() * 6.0})
+	print("HOSPITAL_OK gente=8")
+
 func _crear_colegios() -> void:
 	# Los colegios e institutos de la ciudad (datos de OSM):
 	# parcela con suelo propio, verja perimetral con puerta y
@@ -12129,6 +12595,17 @@ func _crear_colegios() -> void:
 		var pj: Dictionary = JSON.parse_string(pj_txt)
 		if pj.has("pistas"):
 			pistas_todas = pj["pistas"]
+	# La fachada de cada colegio (su edificio mayor y el borde
+	# donde va el cartel grande) tambien viene horneada
+	# (banco/bake_fachadas.py): buscarla en el arranque cargando
+	# baldosas costaria lo mismo que las pistas.
+	var fachadas_todas: Array = []
+	var fj_txt := FileAccess.get_file_as_string("res://datos/ciudad/colegios_fachadas.json")
+	if fj_txt != "":
+		var fj: Dictionary = JSON.parse_string(fj_txt)
+		if fj.has("fachadas"):
+			fachadas_todas = fj["fachadas"]
+	var n_fach := 0
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var cols := PackedColorArray()
@@ -12206,8 +12683,28 @@ func _crear_colegios() -> void:
 		_caja_en(verts, normals, cols, Vector3(gmid.x, gy + 2.55, gmid.y), Vector3(ancho_panel, 0.95, 0.10), Color(0.14, 0.31, 0.53), rot_panel)
 		_caja_en(verts, normals, cols, Vector3(gmid.x, gy + 3.06, gmid.y), Vector3(ancho_panel, 0.09, 0.11), Color(0.85, 0.88, 0.90), rot_panel)
 		var pos_rot := gmid + gnorm * 0.12
-		rotulos_col.append({"n": nombre_col, "h": gnorm, "w": ancho_panel, "g": 1.2, "p": Vector3(pos_rot.x, gy + 2.55, pos_rot.y)})
+		rotulos_col.append({"n": nombre_col, "h": gnorm, "w": ancho_panel, "g": 3.5, "p": Vector3(pos_rot.x, gy + 2.55, pos_rot.y)})
 		_colegios_puertas[nombre_col] = {"pos": Vector3(gmid.x, gy, gmid.y), "n": gnorm, "dir": gdir}
+		# El mismo nombre, en grande, sobre la fachada del
+		# edificio principal: en los campus grandes la puerta
+		# queda a mas de 100 m del edificio y el colegio parecia
+		# no tener cartel (caso Alcaste, senalado por Jon).
+		if idx_col < fachadas_todas.size() and fachadas_todas[idx_col] != null:
+			var fa: Dictionary = fachadas_todas[idx_col]
+			var fx := float(fa["x"])
+			var fz := float(fa["z"])
+			var fn := Vector2(float(fa["nx"]), float(fa["nz"]))
+			var fdir := Vector2(-fn.y, fn.x)
+			var fgy := _altura_terreno(fx, fz)
+			var ancho_f := clampf(float(nombre_col.length()) * 0.30, 6.0, 12.0)
+			var alto_f := clampf(float(fa["plantas"]) * 1.65, 2.0, 3.6)
+			var rot_f := atan2(-fdir.y, fdir.x)
+			var cen_f := Vector2(fx, fz) + fn * 0.18
+			_caja_en(verts, normals, cols, Vector3(cen_f.x, fgy + alto_f, cen_f.y), Vector3(ancho_f, 1.1, 0.12), Color(0.14, 0.31, 0.53), rot_f)
+			_caja_en(verts, normals, cols, Vector3(cen_f.x, fgy + alto_f + 0.60, cen_f.y), Vector3(ancho_f, 0.09, 0.13), Color(0.85, 0.88, 0.90), rot_f)
+			var pos_f := cen_f + fn * 0.16
+			rotulos_col.append({"n": nombre_col, "h": fn, "w": ancho_f, "g": 3.5, "p": Vector3(pos_f.x, fgy + alto_f, pos_f.y)})
+			n_fach += 1
 		var hechas: Array = []
 		if idx_col < pistas_todas.size():
 			for mp in pistas_todas[idx_col]:
@@ -12229,7 +12726,7 @@ func _crear_colegios() -> void:
 	_rotulos_datos["colegios"] = rotulos_col
 	var malla := _malla_de(verts, normals, cols, Color.WHITE)
 	add_child(malla)
-	print("COLEGIOS_OK n=", datos["colegios"].size(), " pistas=", n_pistas, " letreros=", rotulos_col.size())
+	print("COLEGIOS_OK n=", datos["colegios"].size(), " pistas=", n_pistas, " letreros=", rotulos_col.size(), " fachadas=", n_fach)
 
 func _puentes_medida() -> void:
 	# Tanda 3 de los 50: los dos puentes históricos a medida sobre la
@@ -12804,6 +13301,108 @@ func _capturar_si_toca() -> void:
 			_refrescar_rotulos()
 			_cam.look_at_from_position(Vector3(gp.x + gn.x * 8.5, gp.y + 2.0, gp.z + gn.y * 8.5), Vector3(gp.x, gp.y + 2.3, gp.z), Vector3.UP)
 		nombre = "colegio.png"
+	elif args.has("capturar_alcaste"):
+		# La fachada del edificio principal de Alcaste con su
+		# nombre en grande (el campus es enorme y la puerta
+		# queda a 157 m: sin esto no se veia cartel alguno).
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]:
+			_construir_tile(_tile_de(Vector2(-680, -1373)) + dt)
+		var fn_a := Vector2(-0.80, -0.59)
+		var fp_a := Vector2(-680.3, -1373.0)
+		_jugador.position = Vector3(fp_a.x + fn_a.x * 15.0, _altura(fp_a.x + fn_a.x * 15.0, fp_a.y + fn_a.y * 15.0) + 0.95, fp_a.y + fn_a.y * 15.0)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(fp_a.x + fn_a.x * 16.5, _altura(fp_a.x, fp_a.y) + 3.4, fp_a.y + fn_a.y * 16.5), Vector3(fp_a.x, _altura(fp_a.x, fp_a.y) + 2.6, fp_a.y), Vector3.UP)
+		nombre = "alcaste.png"
+	elif args.has("capturar_vuelo"):
+		# Vuelo Madrid Manila desde la avenida Republica
+		# Argentina (su direccion oficial): el nombre sobre la
+		# fachada sur de su edificio mayor.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(1, -1)]:
+			_construir_tile(_tile_de(Vector2(-662, 940)) + dt)
+		var fn_v := Vector2(-0.29, 0.96)
+		var fp_v := Vector2(-661.9, 940.5)
+		_jugador.position = Vector3(fp_v.x + fn_v.x * 13.0, _altura(fp_v.x + fn_v.x * 13.0, fp_v.y + fn_v.y * 13.0) + 0.95, fp_v.y + fn_v.y * 13.0)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(fp_v.x + fn_v.x * 15.0, _altura(fp_v.x, fp_v.y) + 3.2, fp_v.y + fn_v.y * 15.0), Vector3(fp_v.x, _altura(fp_v.x, fp_v.y) + 2.4, fp_v.y), Vector3.UP)
+		nombre = "vuelo.png"
+	elif args.has("capturar_marianistas"):
+		# Marianistas ya existe: parcela, edificios y su
+		# nombre en la fachada principal.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(1, -1)]:
+			_construir_tile(_tile_de(Vector2(2217, 1841)) + dt)
+		var fn_m := Vector2(0.06, -1.0)
+		var fp_m := Vector2(2253.7, 1810.2)
+		_jugador.position = Vector3(fp_m.x + fn_m.x * 16.0, _altura(fp_m.x + fn_m.x * 16.0, fp_m.y + fn_m.y * 16.0) + 0.95, fp_m.y + fn_m.y * 16.0)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(fp_m.x + fn_m.x * 18.0, _altura(fp_m.x, fp_m.y) + 3.6, fp_m.y + fn_m.y * 18.0), Vector3(fp_m.x, _altura(fp_m.x, fp_m.y) + 2.6, fp_m.y), Vector3.UP)
+		nombre = "marianistas.png"
+	elif args.has("capturar_skate"):
+		# El skate park de Las Norias con sus 3 chavales en
+		# marcha (uno, en el aire).
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			_construir_tile(_tile_de(Vector2(-899, -735)) + dt)
+		_tiempo = 3.1
+		_mover_peatones(0.016)
+		var ys_s := _altura(-899, -735)
+		_cam.look_at_from_position(Vector3(-899 + 11.5, ys_s + 4.6, -735 + 10.5), Vector3(-899, ys_s + 0.7, -735), Vector3.UP)
+		nombre = "skate.png"
+	elif args.has("capturar_hospital"):
+		# La puerta del Hospital San Pedro: medicos, enfermera
+		# con la silla de ruedas y madres con ninos.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			_construir_tile(_tile_de(Vector2(1168, 1768)) + dt)
+		_cam.look_at_from_position(Vector3(1168 - 15.0, _altura(1153, 1778) + 4.0, 1768 + 10.0), Vector3(1172, _altura(1172, 1766) + 1.1, 1766), Vector3.UP)
+		nombre = "hospital.png"
+	elif args.has("capturar_parque"):
+		# El Parque Infantil de columpios (677, 1092): antes
+		# no habia ni un columpio.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			_construir_tile(_tile_de(Vector2(677, 1092)) + dt)
+		_tiempo = 2.4
+		_mover_peatones(0.016)
+		_cam.look_at_from_position(Vector3(677 + 10.5, _altura(687, 1102) + 4.2, 1092 + 10.5), Vector3(677, _altura(677, 1092) + 0.9, 1092), Vector3.UP)
+		nombre = "parque.png"
+	elif args.has("capturar_busurbano"):
+		# Un autobus urbano de cerca: ruedas redondas,
+		# ventanillas con sus pilares y gente sentada dentro.
+		var bu0: Dictionary = _buses_urbanos[0]
+		var nb0: Node3D = bu0["nodo3d"]
+		var tb0 := _tile_de(Vector2(nb0.position.x, nb0.position.z))
+		for dxb in [-1, 0, 1]:
+			for dyb in [-1, 0, 1]:
+				_construir_tile(Vector2i(tb0.x + dxb, tb0.y + dyb))
+		var der0 := Vector3(cos(nb0.rotation.y), 0, -sin(nb0.rotation.y))
+		var del0 := Vector3(sin(nb0.rotation.y), 0, cos(nb0.rotation.y))
+		var ojo0 := nb0.position + der0 * 8.5 + del0 * 4.5 + Vector3(0, 2.1, 0)
+		_cam.look_at_from_position(ojo0, nb0.position + Vector3(0, 1.3, 0), Vector3.UP)
+		nombre = "busurbano.png"
+	elif args.has("capturar_cantabria"):
+		# Las ruinas romanas de la cima del Monte Cantabria.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(1, -1)]:
+			_construir_tile(_tile_de(Vector2(1350, -1345)) + dt)
+		var gy_c := _altura(1350, -1345)
+		_cam.look_at_from_position(Vector3(1350 + 19.0, gy_c + 7.5, -1345 + 17.0), Vector3(1350, gy_c + 1.6, -1345), Vector3.UP)
+		nombre = "cantabria.png"
+	elif args.has("capturar_cantabria_vista"):
+		# La vista de Logrono desde la cima: la niebla suave
+		# ya no lo lava todo de naranja.
+		for txv in range(3, 8):
+			for tzv in range(1, 6):
+				_construir_tile(Vector2i(txv, tzv))
+		var gy_v := _altura(1320, -1180)
+		_jugador.position = Vector3(1320, gy_v + 0.95, -1180)
+		_cam.look_at_from_position(Vector3(1320, gy_v + 3.5, -1180), Vector3(0, 12, 300), Vector3.UP)
+		nombre = "cantabria_vista.png"
+	elif args.has("capturar_corazon"):
+		# La Tienda con Corazon (Caritas Chavicar) en Gonzalo
+		# de Berceo 17: no estaba en OSM y no existia en el
+		# juego; verificada a mano y en directorios.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			_construir_tile(_tile_de(Vector2(-1200, 126)) + dt)
+		_jugador.position = Vector3(-1195.5, _altura(-1195.5, 113.8) + 0.95, 113.8)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(-1194.2, _altura(-1200, 126) + 2.4, 110.8), Vector3(-1199.7, _altura(-1200, 126) + 3.0, 126.1), Vector3.UP)
+		nombre = "corazon.png"
 	elif args.has("capturar_protagonistas"):
 		# Retrato de familia en el Espolón: los cinco PJ y el
 		# jugador en fila, de frente a cámara, sin etiquetas.
@@ -14081,9 +14680,27 @@ func _capturar_si_toca() -> void:
 		print("SOLIDOS_OK n=", _solidos.size(), " banco_bloquea=", banco_ok, " spawn_libre=", libre_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
+		# Cada rotulo activo tiene que llevar el pixel_size de
+		# la formula y caber en SU panel: el tope fijo de 4,7 m
+		# era de cuando solo habia rotulos normales cerca del
+		# spawn; los grandes (colegios, g=3,5) se miden contra
+		# el ancho de su propio cartel.
+		var esperados := {}
+		for clave in _rotulos_datos:
+			for r in _rotulos_datos[clave]:
+				var rp2: Vector3 = r["p"]
+				esperados[clave + "|" + str(int(rp2.x)) + "," + str(int(rp2.z)) + "|" + String(r["n"])] = r
+		for r in _placas_datos:
+			var rp3: Vector3 = r["p"]
+			esperados["placa|" + str(int(rp3.x)) + "," + str(int(rp3.z)) + "|" + String(r["n"])] = r
 		for id_r in _rotulos_activos:
 			var et_r: Label3D = _rotulos_activos[id_r]
-			if et_r.pixel_size > 0.00521 or et_r.text.length() * 48.0 * et_r.pixel_size > 4.7:
+			var rr: Dictionary = esperados.get(id_r, {})
+			if rr.is_empty():
+				rot_ok = false
+				continue
+			var ps_esp := minf(0.0052 * float(rr.get("g", 1.0)), float(rr.get("w", 4.6)) / (float(maxi(1, et_r.text.length())) * 48.0))
+			if absf(et_r.pixel_size - ps_esp) > 0.0001 or et_r.text.length() * 48.0 * et_r.pixel_size > float(rr.get("w", 4.6)) + 0.05:
 				rot_ok = false
 		print("ROTULOS_OK pasa=", rot_ok, " n=", _rotulos_activos.size())
 		print("BLOQUE7_PRUEBA_OK placas=", _placas_datos.size(), " paradas=", _b7_paradas, " contenedores=", _b7_contenedores, " pasa=", _placas_datos.size() >= 1000 and _b7_paradas >= 190 and _b7_contenedores >= 75)
@@ -14135,6 +14752,42 @@ func _capturar_si_toca() -> void:
 		print("ESPECIALES_OK n=", _especiales)
 		print("FACHADAS_OK puertas=", _fach_puertas, " tejados=", _fach_tejados, " balcones=", _fach_balcones, " digitos=", _fach_digitos)
 		print("LOCALES_OK locales=", _locales_total, " terrazas=", _terrazas_total, " asientos=", _asientos.size())
+		# Tanda 7: el skate park de Las Norias tiene sus 3
+		# chavales, alguno salta de verdad y ninguno se sale
+		# de la pista.
+		var skate_ok := _skaters.size() == 3
+		var aire_max := 0.0
+		for paso_t in [0.0, 1.3, 2.9, 4.4, 6.1, 7.8]:
+			_tiempo = paso_t
+			_mover_peatones(0.016)
+			for sk in _skaters:
+				var rp: Vector3 = (sk["raiz"] as Node3D).position
+				aire_max = maxf(aire_max, rp.y - float(sk["ys"]) - 0.95)
+				if absf(rp.x + 899.0) > 20.0 or absf(rp.z + 735.0) > 16.0:
+					skate_ok = false
+		print("SKATE_OK pasa=", skate_ok and aire_max > 0.30, " n=", _skaters.size(), " aire=", snappedf(aire_max, 0.01))
+		# Tanda 7: las paredes dibujadas de la UNIR chocan (su
+		# huella OSM quedaba 12 m dentro del dibujo y Jon las
+		# atravesaba).
+		var unir_dentro := _choca_entidad(Vector2(1521.6, 543.1), 0.35, _jugador)
+		var unir_fuera := _choca_entidad(Vector2(1520.2, 547.4), 0.35, _jugador)
+		print("UNIR_COL_OK pasa=", unir_dentro and not unir_fuera)
+		# Tanda 7: las lineas de autobus van SOLO por nodos del
+		# grafo (sin excursiones rodeando edificios: las quejas
+		# de Jon en las lineas roja, verde y azul).
+		var claves_nodo := {}
+		for nv in _nodos:
+			claves_nodo[str(snappedf(nv.x, 0.1)) + "," + str(snappedf(nv.y, 0.1))] = true
+		var pts_fuera := 0
+		for lin in _lineas_bus:
+			for p3 in lin["pts"]:
+				var pv: Vector2 = p3
+				if not claves_nodo.has(str(snappedf(pv.x, 0.1)) + "," + str(snappedf(pv.y, 0.1))):
+					pts_fuera += 1
+		print("LINEAS_GRAFO_OK pasa=", pts_fuera == 0, " fuera=", pts_fuera)
+		# Tanda 7: las ruinas romanas del Monte Cantabria.
+		_construir_tile(Vector2i(6, 1))
+		print("CANTABRIA_OK pasa=", _ruinas)
 		get_tree().quit()
 		return
 	else:
