@@ -3736,6 +3736,13 @@ var _cabeza_j: Node3D
 var _brazo_d: Node3D
 var _pierna_i: Node3D
 var _pierna_d: Node3D
+var _codo_i: Node3D
+var _codo_d: Node3D
+var _rodilla_i: Node3D
+var _rodilla_d: Node3D
+# Caras de los protagonistas (ojos que parpadean, boca que se
+# mueve al hablar): {nombre, oi, od, boca, prox, cierra}.
+var _caras: Array = []
 var _fase_paso := 0.0
 var _et_calle: Label
 var _calles_nombradas: Array = []
@@ -3930,34 +3937,91 @@ func _fundida(cajas: Array) -> MeshInstance3D:
 		_caja_en(verts, normals, cols, parte[0], parte[1], parte[2], 0.0)
 	return _malla_de(verts, normals, cols, Color.WHITE)
 
-func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := false, femenino := false) -> Dictionary:
+func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := false, femenino := false, opc: Dictionary = {}) -> Dictionary:
 	var p := Node3D.new()
-	var piel := Color(0.92, 0.72, 0.58)
+	var piel := Color(opc.get("piel", Color(0.92, 0.72, 0.58)))
 	var mat_camisa := StandardMaterial3D.new()
 	mat_camisa.albedo_color = camisa
 	var mat_pantalon := StandardMaterial3D.new()
 	mat_pantalon.albedo_color = pantalon
 	var mat_pelo := StandardMaterial3D.new()
 	mat_pelo.albedo_color = pelo
-	var ancho_torso := (0.46 if femenino else 0.50) if detalle else 0.44
-	p.add_child(_pieza(Vector3(ancho_torso, 0.58, 0.27 if detalle else 0.25), Vector3(0, 0.28, 0), camisa, mat_camisa))
+	if not detalle:
+		# ===== Nivel sencillo (multitud): como siempre, piezas
+		# fundidas y 6 mallas por persona. =====
+		p.add_child(_pieza(Vector3(0.44, 0.58, 0.25), Vector3(0, 0.28, 0), camisa, mat_camisa))
+		var pivote_cabeza_s := Node3D.new()
+		pivote_cabeza_s.position = Vector3(0, 0.73, 0)
+		var hv := PackedVector3Array()
+		var hn := PackedVector3Array()
+		var hc := PackedColorArray()
+		_bola_en(hv, hn, hc, Vector3.ZERO, 0.16, piel, 3.7)
+		_caja_en(hv, hn, hc, Vector3(0, 0.13, 0), Vector3(0.30, 0.09, 0.30), pelo, 0.0)
+		pivote_cabeza_s.add_child(_malla_de(hv, hn, hc, Color.WHITE))
+		p.add_child(pivote_cabeza_s)
+		var bi_s: Node3D = null
+		var bd_s: Node3D = null
+		var pi_s: Node3D = null
+		var pd_s: Node3D = null
+		for lado in [-1.0, 1.0]:
+			var hombro := Node3D.new()
+			hombro.position = Vector3(0.28 * lado, 0.52, 0)
+			hombro.add_child(_fundida([
+				[Vector3(0, -0.26, 0), Vector3(0.11, 0.56, 0.11), camisa],
+				[Vector3(0, -0.58, 0), Vector3(0.10, 0.10, 0.10), piel],
+			]))
+			p.add_child(hombro)
+			if lado < 0.0:
+				bi_s = hombro
+			else:
+				bd_s = hombro
+		for lado in [-1.0, 1.0]:
+			var cadera := Node3D.new()
+			cadera.position = Vector3(0.11 * lado, -0.02, 0)
+			cadera.add_child(_fundida([
+				[Vector3(0, -0.42, 0), Vector3(0.15, 0.80, 0.15), pantalon],
+				[Vector3(0, -0.86, 0.05), Vector3(0.15, 0.09, 0.27), Color(0.12, 0.10, 0.09)],
+			]))
+			p.add_child(cadera)
+			if lado < 0.0:
+				pi_s = cadera
+			else:
+				pd_s = cadera
+		return {"raiz": p, "bi": bi_s, "bd": bd_s, "pi": pi_s, "pd": pd_s, "cabeza": pivote_cabeza_s, "mat_camisa": mat_camisa, "mat_pelo": mat_pelo, "estampado": null, "ci": null, "cd": null, "ri": null, "rd": null, "ojo_i": null, "ojo_d": null, "boca": null}
+	# ===== Nivel protagonista (E1+E2): proporciones por talla,
+	# torso en dos piezas, brazos con codo y piernas con rodilla,
+	# cara completa siempre, pelo por estilos e identidad por
+	# personaje (gafas, gorra, barba, bigote, bastón, falda).
+	# Todo cuelga de «cuerpo», desplazado para que la suela quede
+	# exactamente donde siempre (los llamantes no cambian). =====
+	var t := float(opc.get("talla", 1.0))
+	var cuerpo := Node3D.new()
+	var suelo := 0.065 + 0.855 * t
+	cuerpo.position.y = suelo - 0.925
+	p.add_child(cuerpo)
+	var ancho_torso := 0.46 if femenino else 0.50
+	var prof := 0.27
+	# Pelvis (pantalón) y pecho (camisa): el torso ya no es un bloque.
+	cuerpo.add_child(_pieza(Vector3(ancho_torso - 0.05, 0.18 * t, prof - 0.02), Vector3(0, 0.03 * t, 0), pantalon, mat_pantalon))
+	cuerpo.add_child(_pieza(Vector3(ancho_torso, 0.42 * t, prof), Vector3(0, 0.33 * t, 0), camisa, mat_camisa))
+	var hombro_t := Vector3(0.13, 0.12, 0.25) if femenino else Vector3(0.15, 0.13, 0.26)
+	var hombro_x := 0.25 if femenino else 0.27
+	cuerpo.add_child(_pieza(hombro_t, Vector3(-hombro_x, 0.50 * t, 0), camisa, mat_camisa))
+	cuerpo.add_child(_pieza(hombro_t, Vector3(hombro_x, 0.50 * t, 0), camisa, mat_camisa))
+	cuerpo.add_child(_pieza(Vector3(0.13, 0.14 * t, 0.13), Vector3(0, 0.615 * t, 0), piel))
+	if bool(opc.get("falda", false)):
+		# Falda sobre las caderas; las piernas salen por debajo.
+		cuerpo.add_child(_pieza(Vector3(ancho_torso + 0.10, 0.36 * t, prof + 0.12), Vector3(0, -0.06 * t, 0), pantalon, mat_pantalon))
 	var estampado: Node3D = null
-	if detalle:
-		# Hombros y cuello
-		var hombro_t := Vector3(0.13, 0.12, 0.25) if femenino else Vector3(0.15, 0.13, 0.26)
-		var hombro_x := 0.25 if femenino else 0.27
-		p.add_child(_pieza(hombro_t, Vector3(-hombro_x, 0.50, 0), camisa, mat_camisa))
-		p.add_child(_pieza(hombro_t, Vector3(hombro_x, 0.50, 0), camisa, mat_camisa))
-		p.add_child(_pieza(Vector3(0.13, 0.14, 0.13), Vector3(0, 0.60, 0), piel))
-		# El billete estampado en el pecho de la camiseta blanca
+	if bool(opc.get("estampado", false)):
+		# Solo el jugador: el billete en el pecho y la g de Glera
+		# en la espalda (pedido de Jon con el logo).
 		estampado = Node3D.new()
-		var billete := _pieza(Vector3(0.30, 0.20, 0.012), Vector3(0, 0.30, 0.142), Color(0.38, 0.56, 0.36))
+		var billete := _pieza(Vector3(0.30, 0.20, 0.012), Vector3(0, 0.30 * t, 0.142), Color(0.38, 0.56, 0.36))
 		estampado.add_child(billete)
-		estampado.add_child(_pieza(Vector3(0.10, 0.13, 0.014), Vector3(0, 0.30, 0.144), Color(0.78, 0.84, 0.68)))
-		estampado.add_child(_pieza(Vector3(0.26, 0.03, 0.014), Vector3(0, 0.215, 0.144), Color(0.30, 0.46, 0.30)))
-		p.add_child(estampado)
-		# La g de Glera estampada en la espalda de la camiseta, para
-		# los dos protagonistas (pedido de Jon con el logo en la mano).
+		estampado.add_child(_pieza(Vector3(0.10, 0.13, 0.014), Vector3(0, 0.30 * t, 0.144), Color(0.78, 0.84, 0.68)))
+		estampado.add_child(_pieza(Vector3(0.26, 0.03, 0.014), Vector3(0, 0.215 * t, 0.144), Color(0.30, 0.46, 0.30)))
+		cuerpo.add_child(estampado)
 		var tex_g := load("res://glera_g.png") as Texture2D
 		if tex_g != null:
 			var mat_g := StandardMaterial3D.new()
@@ -3968,107 +4032,123 @@ func _hacer_persona(camisa: Color, pantalon: Color, pelo: Color, detalle := fals
 			qm.size = Vector2(0.193, 0.46)
 			qm.material = mat_g
 			quad_g.mesh = qm
-			quad_g.position = Vector3(0, 0.29, -0.143)
+			quad_g.position = Vector3(0, 0.29 * t, -0.143)
 			quad_g.rotation.y = PI
-			p.add_child(quad_g)
+			cuerpo.add_child(quad_g)
+	# ---- Cabeza con cara completa ----
 	var pivote_cabeza := Node3D.new()
-	pivote_cabeza.position = Vector3(0, 0.73, 0)
-	if detalle:
-		var cabeza := MeshInstance3D.new()
-		var esfera := SphereMesh.new()
-		esfera.radius = 0.16
-		esfera.height = 0.32
-		cabeza.mesh = esfera
-		var mat_piel := StandardMaterial3D.new()
-		mat_piel.albedo_color = piel
-		esfera.material = mat_piel
-		pivote_cabeza.add_child(cabeza)
-		pivote_cabeza.add_child(_pieza(Vector3(0.30, 0.09, 0.30), Vector3(0, 0.13, 0), pelo, mat_pelo))
-	else:
-		# Secundarios: cabeza y pelo fundidos en una sola malla
-		var hv := PackedVector3Array()
-		var hn := PackedVector3Array()
-		var hc := PackedColorArray()
-		_bola_en(hv, hn, hc, Vector3.ZERO, 0.16, piel, 3.7)
-		_caja_en(hv, hn, hc, Vector3(0, 0.13, 0), Vector3(0.30, 0.09, 0.30), pelo, 0.0)
-		pivote_cabeza.add_child(_malla_de(hv, hn, hc, Color.WHITE))
-	if detalle and not femenino:
-		# Pelo con volumen: coronilla hacia atrás, flequillo, laterales y nuca
+	pivote_cabeza.position = Vector3(0, 0.75 * t, 0)
+	cuerpo.add_child(pivote_cabeza)
+	var cabeza := MeshInstance3D.new()
+	var esfera := SphereMesh.new()
+	esfera.radius = 0.16
+	esfera.height = 0.32
+	cabeza.mesh = esfera
+	var mat_piel := StandardMaterial3D.new()
+	mat_piel.albedo_color = piel
+	esfera.material = mat_piel
+	pivote_cabeza.add_child(cabeza)
+	pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.075, 0.045), Vector3(0, -0.012, 0.160), piel))
+	pivote_cabeza.add_child(_pieza(Vector3(0.03, 0.07, 0.05), Vector3(-0.162, -0.01, 0), piel))
+	pivote_cabeza.add_child(_pieza(Vector3(0.03, 0.07, 0.05), Vector3(0.162, -0.01, 0), piel))
+	pivote_cabeza.add_child(_pieza(Vector3(0.080, 0.018, 0.014), Vector3(-0.06, 0.082, 0.146), pelo, mat_pelo))
+	pivote_cabeza.add_child(_pieza(Vector3(0.080, 0.018, 0.014), Vector3(0.06, 0.082, 0.146), pelo, mat_pelo))
+	var ojo_i := _pieza(Vector3(0.044, 0.054, 0.014), Vector3(-0.058, 0.025, 0.148), Color(0.10, 0.08, 0.07))
+	var ojo_d := _pieza(Vector3(0.044, 0.054, 0.014), Vector3(0.058, 0.025, 0.148), Color(0.10, 0.08, 0.07))
+	pivote_cabeza.add_child(ojo_i)
+	pivote_cabeza.add_child(ojo_d)
+	var boca := _pieza(Vector3(0.056, 0.015, 0.012), Vector3(0, -0.060, 0.150), Color(0.72, 0.38, 0.38))
+	pivote_cabeza.add_child(boca)
+	# ---- Pelo por estilos ----
+	var estilo := String(opc.get("pelo_estilo", "coleta" if femenino else "corto"))
+	var base_cabeza := _pieza(Vector3(0.30, 0.09, 0.30), Vector3(0, 0.13, 0), pelo, mat_pelo)
+	pivote_cabeza.add_child(base_cabeza)
+	if estilo != "calvo" and estilo != "gorra":
 		pivote_cabeza.add_child(_pieza(Vector3(0.29, 0.08, 0.27), Vector3(0, 0.185, 0.01), pelo, mat_pelo))
 		pivote_cabeza.add_child(_pieza(Vector3(0.29, 0.07, 0.06), Vector3(0, 0.15, 0.14), pelo, mat_pelo))
+	if estilo == "corto" or estilo == "mono" or estilo == "calvo" or estilo == "gorra":
 		pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.13, 0.25), Vector3(-0.148, 0.05, -0.01), pelo, mat_pelo))
 		pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.13, 0.25), Vector3(0.148, 0.05, -0.01), pelo, mat_pelo))
 		pivote_cabeza.add_child(_pieza(Vector3(0.29, 0.17, 0.06), Vector3(0, 0.04, -0.145), pelo, mat_pelo))
-		# Barba completa y bigote (mismo material que el pelo)
-		pivote_cabeza.add_child(_pieza(Vector3(0.27, 0.14, 0.16), Vector3(0, -0.105, 0.062), pelo, mat_pelo))
-		pivote_cabeza.add_child(_pieza(Vector3(0.13, 0.032, 0.03), Vector3(0, -0.042, 0.148), pelo, mat_pelo))
-	if detalle and femenino:
-		# Melena rubia con coleta: coronilla, flequillo, laterales largos,
-		# panel trasero y la coleta colgando detrás
-		pivote_cabeza.add_child(_pieza(Vector3(0.29, 0.08, 0.27), Vector3(0, 0.185, 0.01), pelo, mat_pelo))
-		pivote_cabeza.add_child(_pieza(Vector3(0.29, 0.07, 0.06), Vector3(0, 0.15, 0.14), pelo, mat_pelo))
+	if estilo == "melena" or estilo == "coleta":
 		pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.26, 0.25), Vector3(-0.148, -0.03, -0.01), pelo, mat_pelo))
 		pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.26, 0.25), Vector3(0.148, -0.03, -0.01), pelo, mat_pelo))
 		pivote_cabeza.add_child(_pieza(Vector3(0.29, 0.30, 0.06), Vector3(0, -0.03, -0.145), pelo, mat_pelo))
+	if estilo == "coleta":
 		pivote_cabeza.add_child(_pieza(Vector3(0.10, 0.10, 0.10), Vector3(0, 0.10, -0.19), pelo, mat_pelo))
 		var coleta := _pieza(Vector3(0.085, 0.36, 0.085), Vector3(0, -0.12, -0.225), pelo, mat_pelo)
 		coleta.rotation.x = -0.15
 		pivote_cabeza.add_child(coleta)
-		# Boca pequeña
-		pivote_cabeza.add_child(_pieza(Vector3(0.055, 0.014, 0.01), Vector3(0, -0.058, 0.152), Color(0.72, 0.38, 0.38)))
-		# Nariz, orejas, cejas y ojos azules
-		pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.075, 0.045), Vector3(0, -0.012, 0.163), piel))
-		pivote_cabeza.add_child(_pieza(Vector3(0.03, 0.07, 0.05), Vector3(-0.163, -0.01, 0), piel))
-		pivote_cabeza.add_child(_pieza(Vector3(0.03, 0.07, 0.05), Vector3(0.163, -0.01, 0), piel))
-		pivote_cabeza.add_child(_pieza(Vector3(0.078, 0.018, 0.015), Vector3(-0.06, 0.078, 0.147), pelo, mat_pelo))
-		pivote_cabeza.add_child(_pieza(Vector3(0.078, 0.018, 0.015), Vector3(0.06, 0.078, 0.147), pelo, mat_pelo))
-		if not femenino:
-			pivote_cabeza.add_child(_pieza(Vector3(0.045, 0.075, 0.045), Vector3(0, -0.012, 0.163), piel))
-			pivote_cabeza.add_child(_pieza(Vector3(0.03, 0.07, 0.05), Vector3(-0.163, -0.01, 0), piel))
-			pivote_cabeza.add_child(_pieza(Vector3(0.03, 0.07, 0.05), Vector3(0.163, -0.01, 0), piel))
-		for lado_o in [-1.0, 1.0]:
-			pivote_cabeza.add_child(_pieza(Vector3(0.042, 0.052, 0.012), Vector3(0.058 * lado_o, 0.025, 0.150), Color(0.10, 0.08, 0.07)))
-	p.add_child(pivote_cabeza)
+	if estilo == "mono":
+		pivote_cabeza.add_child(_pieza(Vector3(0.11, 0.11, 0.11), Vector3(0, 0.14, -0.175), pelo, mat_pelo))
+	if estilo == "gorra":
+		var col_gorra := Color(opc.get("gorra_color", Color(0.36, 0.39, 0.44)))
+		pivote_cabeza.add_child(_pieza(Vector3(0.315, 0.075, 0.315), Vector3(0, 0.175, 0), col_gorra))
+		pivote_cabeza.add_child(_pieza(Vector3(0.21, 0.03, 0.13), Vector3(0, 0.145, 0.205), col_gorra))
+	if bool(opc.get("barba", false)):
+		pivote_cabeza.add_child(_pieza(Vector3(0.27, 0.14, 0.16), Vector3(0, -0.105, 0.062), pelo, mat_pelo))
+	if bool(opc.get("barba", false)) or bool(opc.get("bigote", false)):
+		pivote_cabeza.add_child(_pieza(Vector3(0.13, 0.032, 0.03), Vector3(0, -0.042, 0.148), pelo, mat_pelo))
+	if bool(opc.get("gafas", false)):
+		var col_mont := Color(0.08, 0.08, 0.09)
+		for lado_g in [-1.0, 1.0]:
+			pivote_cabeza.add_child(_pieza(Vector3(0.098, 0.078, 0.010), Vector3(0.060 * lado_g, 0.028, 0.150), col_mont))
+			pivote_cabeza.add_child(_pieza(Vector3(0.070, 0.052, 0.012), Vector3(0.060 * lado_g, 0.028, 0.151), Color(0.78, 0.86, 0.90)))
+			pivote_cabeza.add_child(_pieza(Vector3(0.012, 0.012, 0.15), Vector3(0.155 * lado_g, 0.035, 0.075), col_mont))
+		pivote_cabeza.add_child(_pieza(Vector3(0.032, 0.012, 0.010), Vector3(0, 0.038, 0.150), col_mont))
+	# ---- Brazos con codo ----
 	var bi: Node3D = null
 	var bd: Node3D = null
-	var pi: Node3D = null
-	var pd: Node3D = null
+	var ci: Node3D = null
+	var cd: Node3D = null
 	for lado in [-1.0, 1.0]:
 		var hombro := Node3D.new()
-		hombro.position = Vector3(((0.30 if femenino else 0.33) if detalle else 0.28) * lado, 0.52, 0)
-		if detalle:
-			hombro.add_child(_pieza(Vector3(0.13, 0.26, 0.13), Vector3(0, -0.13, 0), camisa, mat_camisa))
-			hombro.add_child(_pieza(Vector3(0.10, 0.28, 0.10), Vector3(0, -0.40, 0), piel))
-			hombro.add_child(_pieza(Vector3(0.10, 0.10, 0.10), Vector3(0, -0.58, 0), piel))
-		else:
-			# Secundarios: brazo y mano fundidos en una sola malla
-			hombro.add_child(_fundida([
-				[Vector3(0, -0.26, 0), Vector3(0.11, 0.56, 0.11), camisa],
-				[Vector3(0, -0.58, 0), Vector3(0.10, 0.10, 0.10), piel],
-			]))
-		p.add_child(hombro)
+		hombro.position = Vector3(((0.30 if femenino else 0.33)) * lado, 0.52 * t, 0)
+		hombro.add_child(_pieza(Vector3(0.13, 0.27 * t, 0.13), Vector3(0, -0.135 * t, 0), camisa, mat_camisa))
+		var codo := Node3D.new()
+		codo.position = Vector3(0, -0.27 * t, 0)
+		codo.add_child(_pieza(Vector3(0.105, 0.25 * t, 0.105), Vector3(0, -0.125 * t, 0), piel))
+		codo.add_child(_pieza(Vector3(0.10, 0.10, 0.10), Vector3(0, -0.29 * t, 0), piel))
+		hombro.add_child(codo)
+		cuerpo.add_child(hombro)
 		if lado < 0.0:
 			bi = hombro
+			ci = codo
 		else:
 			bd = hombro
+			cd = codo
+	if bool(opc.get("baston", false)) and bd != null:
+		# El bastón de Elías, colgando de la mano derecha hasta el suelo.
+		var baston := _pieza(Vector3(0.035, 0.95 * t, 0.035), Vector3(0, -0.70 * t, 0.03), Color(0.35, 0.25, 0.16))
+		bd.add_child(baston)
+		bd.add_child(_pieza(Vector3(0.045, 0.045, 0.10), Vector3(0, -0.235 * t, 0.03), Color(0.25, 0.17, 0.10)))
+	# ---- Piernas con rodilla ----
+	var pi: Node3D = null
+	var pd: Node3D = null
+	var ri: Node3D = null
+	var rd: Node3D = null
+	var mat_pierna: Material = mat_pantalon
+	var col_pierna := pantalon
+	if bool(opc.get("falda", false)):
+		mat_pierna = null
+		col_pierna = piel
 	for lado in [-1.0, 1.0]:
 		var cadera := Node3D.new()
 		cadera.position = Vector3(0.11 * lado, -0.02, 0)
-		if detalle:
-			cadera.add_child(_pieza(Vector3(0.15, 0.80, 0.15), Vector3(0, -0.42, 0), pantalon, mat_pantalon))
-			cadera.add_child(_pieza(Vector3(0.15, 0.09, 0.27), Vector3(0, -0.86, 0.05), Color(0.12, 0.10, 0.09)))
-		else:
-			# Secundarios: pierna y zapato fundidos en una sola malla
-			cadera.add_child(_fundida([
-				[Vector3(0, -0.42, 0), Vector3(0.15, 0.80, 0.15), pantalon],
-				[Vector3(0, -0.86, 0.05), Vector3(0.15, 0.09, 0.27), Color(0.12, 0.10, 0.09)],
-			]))
-		p.add_child(cadera)
+		cadera.add_child(_pieza(Vector3(0.15, 0.44 * t, 0.15), Vector3(0, -0.22 * t, 0), pantalon, mat_pantalon))
+		var rodilla := Node3D.new()
+		rodilla.position = Vector3(0, -0.44 * t, 0)
+		rodilla.add_child(_pieza(Vector3(0.13, 0.38 * t, 0.13), Vector3(0, -0.19 * t, 0), col_pierna, mat_pierna))
+		rodilla.add_child(_pieza(Vector3(0.15, 0.09, 0.27), Vector3(0, -0.415 * t, 0.05), Color(0.12, 0.10, 0.09)))
+		cadera.add_child(rodilla)
+		cuerpo.add_child(cadera)
 		if lado < 0.0:
 			pi = cadera
+			ri = rodilla
 		else:
 			pd = cadera
-	return {"raiz": p, "bi": bi, "bd": bd, "pi": pi, "pd": pd, "cabeza": pivote_cabeza, "mat_camisa": mat_camisa, "mat_pelo": mat_pelo, "estampado": estampado}
+			rd = rodilla
+	return {"raiz": p, "bi": bi, "bd": bd, "pi": pi, "pd": pd, "cabeza": pivote_cabeza, "mat_camisa": mat_camisa, "mat_pelo": mat_pelo, "estampado": estampado, "ci": ci, "cd": cd, "ri": ri, "rd": rd, "ojo_i": ojo_i, "ojo_d": ojo_d, "boca": boca}
 
 const CAMISETAS := [Color(0.92, 0.91, 0.89), Color(0.16, 0.38, 0.62), Color(0.75, 0.30, 0.25), Color(0.20, 0.55, 0.35), Color(0.85, 0.65, 0.20), Color(0.25, 0.25, 0.28), Color(0.80, 0.45, 0.60), Color(0.50, 0.30, 0.60)]
 const PELOS := [Color(0.30, 0.20, 0.12), Color(0.10, 0.08, 0.06), Color(0.55, 0.40, 0.25), Color(0.75, 0.72, 0.68), Color(0.65, 0.25, 0.10), Color(0.87, 0.71, 0.36)]
@@ -4088,7 +4168,10 @@ func _cambiar_personaje() -> void:
 	_guardar()
 
 func _crear_personaje() -> Node3D:
-	var d := _hacer_persona(CAMISETAS[_camisa_idx % CAMISETAS.size()], Color(0.22, 0.23, 0.30), PELOS[_pelo_idx % PELOS.size()], true, _personaje == 1)
+	var opc_j: Dictionary = {"estampado": true, "talla": 1.0, "pelo_estilo": "corto", "barba": true, "piel": Color(0.90, 0.70, 0.56)}
+	if _personaje == 1:
+		opc_j = {"estampado": true, "talla": 0.97, "pelo_estilo": "coleta", "piel": Color(0.93, 0.74, 0.60)}
+	var d := _hacer_persona(CAMISETAS[_camisa_idx % CAMISETAS.size()], Color(0.22, 0.23, 0.30), PELOS[_pelo_idx % PELOS.size()], true, _personaje == 1, opc_j)
 	_estampado_j = d["estampado"]
 	if _estampado_j != null:
 		_estampado_j.visible = (_camisa_idx % CAMISETAS.size()) == 0
@@ -4099,7 +4182,61 @@ func _crear_personaje() -> Node3D:
 	_brazo_d = d["bd"]
 	_pierna_i = d["pi"]
 	_pierna_d = d["pd"]
+	_codo_i = d["ci"]
+	_codo_d = d["cd"]
+	_rodilla_i = d["ri"]
+	_rodilla_d = d["rd"]
+	_registrar_cara(d, "Tú")
 	return d["raiz"]
+
+func _balanceo_extra(d: Dictionary, fase: float) -> void:
+	# Rodillas y codos del nivel protagonista durante el paso; en
+	# el nivel sencillo no hay esas piezas y no hace nada.
+	if d.get("ri") == null:
+		return
+	(d["ri"] as Node3D).rotation.x = maxf(0.0, sin(fase + 2.2)) * 0.5
+	(d["rd"] as Node3D).rotation.x = maxf(0.0, -sin(fase + 2.2)) * 0.5
+	(d["ci"] as Node3D).rotation.x = -0.28 + (d["bi"] as Node3D).rotation.x * 0.3
+	(d["cd"] as Node3D).rotation.x = -0.28 + (d["bd"] as Node3D).rotation.x * 0.3
+
+func _pose_reposo(d: Dictionary, delta: float) -> void:
+	# Al parar, las piezas vuelven a su sitio poco a poco (las
+	# caderas y los hombros antes se quedaban a mitad de paso).
+	var k := clampf(delta * 8.0, 0.0, 1.0)
+	for clave in ["pi", "pd", "bi", "bd", "ri", "rd", "ci", "cd"]:
+		var piv: Node3D = d.get(clave)
+		if piv != null:
+			piv.rotation.x = lerpf(piv.rotation.x, 0.0, k)
+
+func _registrar_cara(d: Dictionary, nombre: String) -> void:
+	# Sustituye la cara anterior del mismo nombre (el jugador se
+	# recrea al cambiar de personaje) y registra ojos y boca.
+	if d.get("ojo_i") == null:
+		return
+	_caras = _caras.filter(func(c: Dictionary) -> bool: return String(c["nombre"]) != nombre)
+	_caras.append({"nombre": nombre, "oi": d["ojo_i"], "od": d["ojo_d"], "boca": d["boca"], "prox": _tiempo + randf_range(1.0, 4.0), "cierra": -1.0})
+
+func _actualizar_caras() -> void:
+	if _caras.is_empty():
+		return
+	var hablante := ""
+	if _dlg_abierto and _dlg_i < _dlg_lineas.size():
+		hablante = String(_dlg_lineas[_dlg_i][0])
+	for c in _caras:
+		if _tiempo >= float(c["prox"]):
+			c["prox"] = _tiempo + randf_range(2.2, 5.0)
+			c["cierra"] = _tiempo + 0.12
+		var esc_o := 0.12 if _tiempo < float(c["cierra"]) else 1.0
+		(c["oi"] as Node3D).scale.y = esc_o
+		(c["od"] as Node3D).scale.y = esc_o
+		var boca: Node3D = c["boca"]
+		if boca != null:
+			if hablante != "" and String(c["nombre"]) == hablante:
+				boca.scale.y = 1.0 + sin(_tiempo * 22.0) * 0.9
+				boca.scale.x = 1.0 + sin(_tiempo * 17.0) * 0.15
+			else:
+				boca.scale.y = 1.0
+				boca.scale.x = 1.0
 
 func _animar_paso(delta: float, andando: bool) -> void:
 	if _pierna_i == null:
@@ -4111,10 +4248,21 @@ func _animar_paso(delta: float, andando: bool) -> void:
 		_pierna_d.rotation.x = -a
 		_brazo_i.rotation.x = -a * 0.7
 		_brazo_d.rotation.x = a * 0.7
+		if _rodilla_i != null:
+			# La rodilla flexiona cuando su pierna avanza (talón
+			# que se levanta por detrás) y el codo mantiene una
+			# flexión natural con un punto de contrafase.
+			_rodilla_i.rotation.x = maxf(0.0, sin(_fase_paso + 2.2)) * (0.62 if _corriendo else 0.5)
+			_rodilla_d.rotation.x = maxf(0.0, -sin(_fase_paso + 2.2)) * (0.62 if _corriendo else 0.5)
+			_codo_i.rotation.x = -0.28 + _brazo_i.rotation.x * 0.3
+			_codo_d.rotation.x = -0.28 + _brazo_d.rotation.x * 0.3
 		if _cabeza_j != null:
 			_cabeza_j.rotation.y = sin(_fase_paso * 0.5) * 0.12
 	else:
-		for piv in [_pierna_i, _pierna_d, _brazo_i, _brazo_d]:
+		var pivs: Array = [_pierna_i, _pierna_d, _brazo_i, _brazo_d]
+		if _rodilla_i != null:
+			pivs += [_rodilla_i, _rodilla_d, _codo_i, _codo_d]
+		for piv in pivs:
 			piv.rotation.x = lerpf(piv.rotation.x, 0.0, clampf(delta * 8.0, 0.0, 1.0))
 		if _cabeza_j != null and not _sentado:
 			_cabeza_j.rotation.y = sin(_tiempo * 0.35) * 0.4
@@ -4997,6 +5145,7 @@ func _physics_process(delta: float) -> void:
 		_tic_vis = 0.0
 		_actualizar_visibilidad()
 	_actualizar_especiales(delta)
+	_actualizar_caras()
 	_actualizar_encuentros(delta)
 	_mover_encuentro(delta)
 	_mover_historia(delta)
@@ -5086,6 +5235,10 @@ func _andar(delta: float) -> void:
 	if _sentado:
 		_pierna_i.rotation.x = -1.25
 		_pierna_d.rotation.x = -1.25
+		if _rodilla_i != null:
+			# Sentado de verdad: muslo horizontal, espinilla colgando.
+			_rodilla_i.rotation.x = 1.2
+			_rodilla_d.rotation.x = 1.2
 		_brazo_i.rotation.x = -0.15
 		_brazo_d.rotation.x = -0.15
 		if _cabeza_j != null:
@@ -8849,7 +9002,14 @@ func _crear_historia() -> void:
 	for d in defs:
 		var id := String(d["id"])
 		var pos := _punto_libre(Vector3(sitios[id]), 0.5)
-		var per := _hacer_persona(d["camisa"], d["pantalon"], d["pelo"], false, bool(d["fem"]))
+		var opcs_pj := {
+			"carmen": {"piel": Color(0.93, 0.74, 0.60), "talla": 0.95, "pelo_estilo": "mono", "gafas": true, "falda": true},
+			"paco": {"piel": Color(0.88, 0.66, 0.50), "talla": 1.03, "pelo_estilo": "corto", "barba": true},
+			"lucia": {"piel": Color(0.94, 0.76, 0.62), "talla": 0.99, "pelo_estilo": "coleta", "gafas": true},
+			"elias": {"piel": Color(0.91, 0.71, 0.57), "talla": 0.97, "pelo_estilo": "gorra", "bigote": true, "baston": true},
+			"marta": {"piel": Color(0.89, 0.68, 0.53), "talla": 1.0, "pelo_estilo": "mono"},
+		}
+		var per := _hacer_persona(d["camisa"], d["pantalon"], d["pelo"], true, bool(d["fem"]), opcs_pj.get(id, {}))
 		var raiz: Node3D = per["raiz"]
 		raiz.position = Vector3(pos.x, _altura(pos.x, pos.z) + 0.95, pos.z)
 		raiz.rotation.y = randf() * TAU
@@ -8868,6 +9028,7 @@ func _crear_historia() -> void:
 		et.position = raiz.position + Vector3(0, 1.35, 0)
 		add_child(et)
 		_pjs[id] = {"nombre": String(d["nombre"]), "pos": raiz.position, "nodo": raiz, "d": per, "et": et, "casa": raiz.position, "fase": 0.0, "atasco": 0.0, "volviendo": false}
+		_registrar_cara(per, String(d["nombre"]))
 	_hist_marcar()
 	print("HISTORIA_OK personajes=", _pjs.size(), " misiones=", HISTORIA.size(), " idx=", _historia_idx)
 
@@ -9189,6 +9350,7 @@ func _mover_encuentro(delta: float) -> void:
 		(d["pd"] as Node3D).rotation.x = -a
 		(d["bi"] as Node3D).rotation.x = -a * 0.7
 		(d["bd"] as Node3D).rotation.x = a * 0.7
+		_balanceo_extra(d, float(_enc["fase"]))
 		raiz.position.y += absf(sin(float(_enc["fase"]))) * 0.035
 
 func _pj_caminar(pj: Dictionary, objetivo: Vector2, delta: float, tras_jugador: bool) -> void:
@@ -9204,6 +9366,7 @@ func _pj_caminar(pj: Dictionary, objetivo: Vector2, delta: float, tras_jugador: 
 		raiz.position = Vector3(cerca.x, _altura(cerca.x, cerca.z) + 0.95, cerca.z)
 		return
 	if dist < (1.7 if tras_jugador else 0.4):
+		_pose_reposo(pj["d"], delta)
 		return
 	var dir := (objetivo - el) / dist
 	var destino := objetivo - dir * (1.6 if tras_jugador else 0.0)
@@ -9248,6 +9411,7 @@ func _pj_caminar(pj: Dictionary, objetivo: Vector2, delta: float, tras_jugador: 
 		(d["pd"] as Node3D).rotation.x = -a
 		(d["bi"] as Node3D).rotation.x = -a * 0.7
 		(d["bd"] as Node3D).rotation.x = a * 0.7
+		_balanceo_extra(d, float(pj["fase"]))
 		raiz.position.y += absf(sin(float(pj["fase"]))) * 0.035
 
 func _mover_historia(delta: float) -> void:
@@ -9380,6 +9544,17 @@ func _enc_cancelar() -> void:
 	_hist_marcar()
 	_aviso_set("Encuentro cancelado", 4.0)
 	print("ENCUENTRO_CANCELADO")
+
+func _probar_protagonistas() -> void:
+	# E1+E2: el jugador y los cinco PJ de historia son de nivel
+	# protagonista (rodillas, codos, ojos y boca) y están en el
+	# registro de caras que parpadean y hablan.
+	var bien := _rodilla_i != null and _codo_i != null and _caras.size() >= 6
+	for id in _pjs.keys():
+		var d: Dictionary = _pjs[id]["d"]
+		if d.get("ri") == null or d.get("ojo_i") == null or d.get("boca") == null:
+			bien = false
+	print("PROTAGONISTAS_OK pasa=", bien, " caras=", _caras.size(), " pjs=", _pjs.size())
 
 func _probar_historia() -> void:
 	_historia_idx = 0
@@ -11716,6 +11891,44 @@ func _capturar_si_toca() -> void:
 			print("RADAR_OK multa=", antes_r - _dinero)
 		get_tree().quit()
 		return
+	elif args.has("capturar_protagonistas"):
+		# Retrato de familia en el Espolón: los cinco PJ y el
+		# jugador en fila, de frente a cámara, sin etiquetas.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			_construir_tile(_tile_de(Vector2(-256, 273)) + dt)
+		var centro := Vector3(-256, 0, 268)
+		var ids := ["carmen", "paco", "lucia", "elias", "marta"]
+		for k in range(ids.size()):
+			var pj: Dictionary = _pjs[ids[k]]
+			var nodo_p: Node3D = pj["nodo"]
+			var px := centro.x + (float(k) - 2.0) * 0.9 - 0.45
+			nodo_p.position = Vector3(px, _altura(px, centro.z) + 0.95, centro.z)
+			nodo_p.rotation.y = 0.0
+			(pj["et"] as Label3D).visible = false
+		_jugador.position = Vector3(centro.x + 2.25, _altura(centro.x + 2.25, centro.z) + 0.95, centro.z)
+		_jugador.rotation.y = 0.0
+		_cam.look_at_from_position(Vector3(centro.x, _altura(centro.x, centro.z + 4.2) + 1.5, centro.z + 4.2), Vector3(centro.x, _altura(centro.x, centro.z) + 0.9, centro.z), Vector3.UP)
+		nombre = "protagonistas.png"
+	elif args.has("capturar_paso"):
+		# El jugador SENTADO en un banco del Espolón: muslos
+		# horizontales y espinillas colgando en vertical. Es la
+		# prueba del signo de la rodilla (la misma flexión que
+		# al andar levanta el talón por detrás).
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+			_construir_tile(_tile_de(Vector2(-256, 273)) + dt)
+		_jugador.position = Vector3(-256, _altura(-256, 268) + 0.47, 268)
+		_jugador.rotation.y = 0.0
+		_sentado = true
+		_pierna_i.rotation.x = -1.25
+		_pierna_d.rotation.x = -1.25
+		_rodilla_i.rotation.x = 1.2
+		_rodilla_d.rotation.x = 1.2
+		_brazo_i.rotation.x = -0.15
+		_codo_i.rotation.x = -0.5
+		_brazo_d.rotation.x = -0.15
+		_codo_d.rotation.x = -0.5
+		_cam.look_at_from_position(Vector3(-254.4, _altura(-254.4, 270.8) + 1.0, 270.8), Vector3(-256, _altura(-256, 268) + 0.55, 268), Vector3.UP)
+		nombre = "paso.png"
 	elif args.has("capturar_carretera"):
 		# Vista de conducción por la Av. de Madrid hacia el sur: el
 		# firme tiene que verse plano, sin cuñas ni altibajos.
@@ -11956,6 +12169,7 @@ func _capturar_si_toca() -> void:
 		nombre = "furgo.png"
 	elif args.has("probar_historia"):
 		_probar_historia()
+		_probar_protagonistas()
 		return
 	elif args.has("capturar_historia"):
 		_historia_idx = 0
