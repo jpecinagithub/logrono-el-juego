@@ -11,15 +11,15 @@ Juego de mundo abierto ambientado en Logroño, en Godot 4.3, construido **clean-
 - **Código y datos**: este paquete (carpetas `juego/`, `pipeline/`, `banco/`, `datos/`, `docs/`).
 - **Repo GitHub (privado)**: https://github.com/jpecinagithub/logrono-el-juego — commit inicial con estos mismos 449 archivos.
 - **Juego publicado (web)**: https://jpecina.duckdns.org/logrono/ — en el servidor Oracle de Jon, carpeta `/var/www/projects/logrono/`.
-- **APK Android firmado**: `logrono-prototipo.apk` en la raíz del paquete (build actual, sha 7734586c42ff03a9…).
+- **APK Android firmado**: `logrono-prototipo.apk` en la raíz del paquete (build del Bloque 6, sha 7734586c42ff03a9…; la web ya lleva el Bloque 7).
 - **Clave de firma del APK**: `tools/debug.keystore` (alias `androiddebugkey`, contraseña `android`) — incluida en el paquete porque sin ella no se puede firmar una actualización instalable encima de la anterior.
 - **Herramientas NO incluidas** (2,5 GB, se descargan): Godot 4.3 stable (binario en `tools/`), JDK y Android SDK (rutas esperadas: `tools/jdk` y `tools/android-sdk`).
 
 ## Estado (23-nov-2026)
 
 - Fases 0–14 completas y publicadas: ciudad entera con streaming por baldosas (5,4×4,0 km), encargos, mapa, tráfico, peatones, interiores, trabajos especiales, historia propia (12 misiones) y carreras.
-- Plan «Logroño calle a calle»: **Bloques 4 Ribera, 3 Superficies, 5 Gaunas, 1 Pinchos, 2 Ejes y 6 Barrios — cerrados y publicados**. 
-- **Pendiente inmediato: Bloque 7 (transversales)** — los datos ya están horneados en `banco/placas_ciudad.json` (1.060 placas), `banco/paradas.json` (206 paradas de autobús OSM) y `banco/contenedores.json` (85). Falta el runtime: extender las placas a toda la ciudad (el sistema ya existe para los ejes: `_cargar_placas()` + canal de proximidad en `_refrescar_rotulos()`), dibujar las marquesinas de parada y los contenedores, y publicar. Con el 7 se cierra el plan calle a calle.
+- Plan «Logroño calle a calle»: **Bloques 4 Ribera, 3 Superficies, 5 Gaunas, 1 Pinchos, 2 Ejes, 6 Barrios y 7 Transversales — cerrados y publicados. Plan calle a calle COMPLETO.**
+- **Bloque 7 (23-nov, PUB18 BOOT_OK)**: placas extendidas a toda la ciudad (1.071 con dedupe, PLACAS_OK), 203 paradas con marquesina y nombre por proximidad, y 84 contenedores, todo fundido en una sola malla (`_crear_bloque7()` + horneado `banco/bake_bloque7.py`; datos en `juego/datos/ciudad/placas_ciudad.json`, `paradas.json`, `contenedores.json`). Detalle en `GOAL.md`. **Ojo: el APK publicado sigue siendo el build del Bloque 6** — la web va por delante; reexportar el APK cuando esté el keystore a mano.
 - Decisiones de Jon pendientes (no perseguir): historia larga 13B (9 capítulos o entera con 3), multijugador como Fase 17, ortofoto PNOA generalizada, tamaño de la «g» de Glera en la espalda del personaje.
 
 ## Cómo se trabaja

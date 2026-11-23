@@ -285,6 +285,7 @@ func _ready() -> void:
 	_crear_mision()
 	_crear_entorno()
 	_crear_mobiliario()
+	_crear_bloque7()
 	_crear_recetas()
 	_crear_puentes()
 	_puentes_medida()
@@ -3731,6 +3732,9 @@ var _et_calle: Label
 var _calles_nombradas: Array = []
 var _ejes_polys: Array = []
 var _placas_datos: Array = []
+# Bloque 7: marquesinas de parada y contenedores colocados
+var _b7_paradas := 0
+var _b7_contenedores := 0
 var _t_calle := 0.0
 # Fase 3: dinero, encargos, mapa
 var _dinero := 60
@@ -5886,20 +5890,50 @@ func _probar_berceo() -> void:
 	get_tree().quit()
 
 func _cargar_placas() -> void:
-	# Placas con el nombre de la calle en las esquinas de los
-	# grandes ejes (horneadas en placas.json): una caja oscura
-	# fundida por placa y el nombre por el canal de rotulos de
-	# proximidad, como los de los locales.
-	if not FileAccess.file_exists("res://datos/ciudad/placas.json"):
+	# Placas con el nombre de la calle en las esquinas: primero las
+	# de los grandes ejes (horneadas en placas.json) y, desde el
+	# Bloque 7, las de toda la ciudad (placas_ciudad.json). Una caja
+	# oscura fundida por placa y el nombre por el canal de rotulos
+	# de proximidad, como los de los locales.
+	var crudas: Array = []
+	for ruta in ["res://datos/ciudad/placas.json", "res://datos/ciudad/placas_ciudad.json"]:
+		if not FileAccess.file_exists(ruta):
+			continue
+		var d = JSON.parse_string(FileAccess.get_file_as_string(ruta))
+		if d != null and d.has("placas"):
+			crudas.append_array(d["placas"])
+	if crudas.is_empty():
 		return
-	var d = JSON.parse_string(FileAccess.get_file_as_string("res://datos/ciudad/placas.json"))
-	if d == null:
-		return
+	# Sin duplicadas: las de los ejes se repiten dentro de la lista
+	# de la ciudad; misma calle a menos de 8 m es la misma placa.
+	var rej := {}
+	var aceptadas: Array = []
+	for pl in crudas:
+		var x := float(pl["x"])
+		var z := float(pl["z"])
+		var nom := String(pl["n"])
+		var dup := false
+		for cx in range(int(floor((x - 8.0) / 10.0)), int(floor((x + 8.0) / 10.0)) + 1):
+			for cz in range(int(floor((z - 8.0) / 10.0)), int(floor((z + 8.0) / 10.0)) + 1):
+				var clave := str(cx) + "," + str(cz)
+				if not rej.has(clave):
+					continue
+				for ia in rej[clave]:
+					var pa: Dictionary = aceptadas[ia]
+					if String(pa["n"]) == nom and Vector2(x - float(pa["x"]), z - float(pa["z"])).length_squared() < 64.0:
+						dup = true
+		if dup:
+			continue
+		var clave_p := str(int(floor(x / 10.0))) + "," + str(int(floor(z / 10.0)))
+		if not rej.has(clave_p):
+			rej[clave_p] = []
+		rej[clave_p].append(aceptadas.size())
+		aceptadas.append(pl)
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var cols := PackedColorArray()
 	var col_placa := Color(0.13, 0.16, 0.28)
-	for pl in d["placas"]:
+	for pl in aceptadas:
 		var x := float(pl["x"])
 		var z := float(pl["z"])
 		var h := Vector2(float(pl["hx"]), float(pl["hz"]))
@@ -5910,6 +5944,73 @@ func _cargar_placas() -> void:
 	if not verts.is_empty():
 		add_child(_malla_de(verts, normals, cols, Color.WHITE))
 	print("PLACAS_OK n=", _placas_datos.size())
+
+func _crear_bloque7() -> void:
+	# Bloque 7 (transversales): marquesinas en las paradas reales
+	# de autobús (OSM, horneadas en paradas.json con el rumbo de su
+	# calle y fuera de las huellas de edificio) y contenedores
+	# (contenedores.json). Todo fundido en UNA sola malla de colores
+	# de vértice — el presupuesto web no admite objetos sueltos — y
+	# cada pieza con su sólido, como los bancos del mobiliario. El
+	# nombre de la parada va por el canal de rótulos de proximidad.
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var cols := PackedColorArray()
+	var col_hierro := Color(0.13, 0.13, 0.14)
+	var col_techo := Color(0.20, 0.22, 0.25)
+	var col_cristal := Color(0.55, 0.65, 0.70)
+	var col_madera := Color(0.45, 0.31, 0.17)
+	var col_cartel := Color(0.10, 0.25, 0.60)
+	_b7_paradas = 0
+	_b7_contenedores = 0
+	var rotulos_paradas: Array = []
+	if FileAccess.file_exists("res://datos/ciudad/paradas.json"):
+		var dp = JSON.parse_string(FileAccess.get_file_as_string("res://datos/ciudad/paradas.json"))
+		if dp != null and dp.has("paradas"):
+			for pa in dp["paradas"]:
+				var x := float(pa["x"])
+				var z := float(pa["z"])
+				var h := Vector2(float(pa.get("hx", 1.0)), float(pa.get("hz", 0.0)))
+				var rot := atan2(h.x, h.y)
+				var lat := Vector3(cos(rot), 0, -sin(rot))
+				var detras := Vector3(-sin(rot), 0, -cos(rot))
+				var y := _altura(x, z)
+				var cen := Vector3(x, y, z)
+				_caja_en(verts, normals, cols, cen + lat * 1.2 + Vector3(0, 1.15, 0), Vector3(0.09, 2.3, 0.09), col_hierro, rot)
+				_caja_en(verts, normals, cols, cen - lat * 1.2 + Vector3(0, 1.15, 0), Vector3(0.09, 2.3, 0.09), col_hierro, rot)
+				_caja_en(verts, normals, cols, cen + Vector3(0, 2.35, 0), Vector3(2.8, 0.1, 1.3), col_techo, rot)
+				_caja_en(verts, normals, cols, cen + detras * 0.6 + Vector3(0, 1.15, 0), Vector3(2.8, 1.05, 0.05), col_cristal, rot)
+				_caja_en(verts, normals, cols, cen + Vector3(0, 0.55, 0), Vector3(2.3, 0.08, 0.4), col_madera, rot)
+				_caja_en(verts, normals, cols, cen + lat * 1.7 + Vector3(0, 1.3, 0), Vector3(0.07, 2.6, 0.07), col_hierro, rot)
+				_caja_en(verts, normals, cols, cen + lat * 1.7 + Vector3(0, 2.45, 0), Vector3(0.06, 0.55, 0.75), col_cartel, rot)
+				_registrar_solido(x, z, rot, 0.65, 1.4)
+				rotulos_paradas.append({"n": String(pa["n"]), "h": h, "w": 3.0, "g": 0.5, "p": Vector3(x, y + 2.95, z)})
+				_b7_paradas += 1
+	if not rotulos_paradas.is_empty():
+		_rotulos_datos["paradas"] = rotulos_paradas
+	if FileAccess.file_exists("res://datos/ciudad/contenedores.json"):
+		var dc = JSON.parse_string(FileAccess.get_file_as_string("res://datos/ciudad/contenedores.json"))
+		if dc != null and dc.has("contenedores"):
+			for co in dc["contenedores"]:
+				var x := float(co["x"])
+				var z := float(co["z"])
+				var h := Vector2(float(co.get("hx", 1.0)), float(co.get("hz", 0.0)))
+				var rot := atan2(h.x, h.y)
+				var lat := Vector3(cos(rot), 0, -sin(rot))
+				var y := _altura(x, z)
+				var cen := Vector3(x, y, z)
+				var es_punto := String(co.get("t", "container")) == "waste_disposal"
+				var col_cuerpo := Color(0.35, 0.36, 0.38) if es_punto else Color(0.16, 0.30, 0.18)
+				var col_tapa := Color(0.45, 0.46, 0.48) if es_punto else Color(0.22, 0.40, 0.24)
+				_caja_en(verts, normals, cols, cen + Vector3(0, 0.62, 0), Vector3(1.15, 1.25, 2.0), col_cuerpo, rot)
+				_caja_en(verts, normals, cols, cen + Vector3(0, 1.29, 0), Vector3(1.2, 0.09, 2.05), col_tapa, rot)
+				_caja_en(verts, normals, cols, cen + lat * 0.59 + Vector3(0, 0.95, 0), Vector3(0.04, 0.28, 0.7), Color(0.05, 0.05, 0.05), rot)
+				_caja_en(verts, normals, cols, cen - lat * 0.59 + Vector3(0, 0.95, 0), Vector3(0.04, 0.28, 0.7), Color(0.05, 0.05, 0.05), rot)
+				_registrar_solido(x, z, rot, 1.0, 0.6)
+				_b7_contenedores += 1
+	if not verts.is_empty():
+		add_child(_malla_de(verts, normals, cols, Color.WHITE))
+	print("BLOQUE7_OK paradas=", _b7_paradas, " contenedores=", _b7_contenedores)
 
 func _puerta_cercana() -> String:
 	if _jugador == null or _en_interior != "":
@@ -11642,6 +11743,15 @@ func _capturar_si_toca() -> void:
 		_refrescar_rotulos()
 		_cam.look_at_from_position(Vector3(-366.9, _altura(-366.9, 426.3) + 1.7, 426.3), Vector3(-369.1, _altura(-369.1, 432.9) + 2.6, 432.9), Vector3.UP)
 		nombre = "eje_placa.png"
+	elif args.has("capturar_bloque7"):
+		for tt in [Vector2i(4, 3), Vector2i(3, 3), Vector2i(4, 2), Vector2i(3, 2), Vector2i(5, 3), Vector2i(4, 4)]:
+			_construir_tile(tt)
+		_jugador.position = Vector3(334.2, _altura(334.2, 199.3) + 0.95, 199.3)
+		_dir_jugador = atan2(0.953, 0.303)
+		_jugador.rotation.y = _dir_jugador
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(337.6, _altura(337.6, 200.3) + 2.4, 200.3), Vector3(343.7, _altura(343.7, 202.0) + 1.4, 202.0), Vector3.UP)
+		nombre = "bloque7.png"
 	elif args.has("capturar_eje_galdos"):
 		for tt in [Vector2i(2, 4), Vector2i(2, 3), Vector2i(1, 4)]:
 			_construir_tile(tt)
@@ -11922,6 +12032,7 @@ func _capturar_si_toca() -> void:
 			if et_r.pixel_size > 0.00521 or et_r.text.length() * 48.0 * et_r.pixel_size > 4.7:
 				rot_ok = false
 		print("ROTULOS_OK pasa=", rot_ok, " n=", _rotulos_activos.size())
+		print("BLOQUE7_PRUEBA_OK placas=", _placas_datos.size(), " paradas=", _b7_paradas, " contenedores=", _b7_contenedores, " pasa=", _placas_datos.size() >= 1000 and _b7_paradas >= 190 and _b7_contenedores >= 75)
 		# Bloque G: si la recta nodo->portal está bloqueada por un edificio,
 		# el tramo transitable tiene que rodearla sin chocar en ningún tramo.
 		var tramo_casos := 0
