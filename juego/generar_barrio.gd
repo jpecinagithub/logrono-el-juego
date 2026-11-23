@@ -3920,6 +3920,8 @@ var _joy_centro := Vector2.ZERO
 var _joy_valor := Vector2.ZERO
 var _trafico: Array = []
 var _buses_urbanos: Array = []
+var _lineas_bus: Array = []
+var _bus_pasajero: Dictionary = {}
 var _pois_minimapa: Array = []
 var _asientos: Array = []
 var _sentado := false
@@ -4806,14 +4808,64 @@ func _probar_mapa() -> void:
 	pasa = pasa and _mapa_abierto
 	var antes := _jugador.position
 	var pos_px: Vector2 = _mapa.call("punto_de_poi", poi)
+	# El clic ahora es pulsar y soltar sin arrastrar
 	var ev := InputEventMouseButton.new()
 	ev.button_index = MOUSE_BUTTON_LEFT
 	ev.pressed = true
 	ev.position = pos_px
 	_mapa.call("_gui_input", ev)
+	ev.pressed = false
+	_mapa.call("_gui_input", ev)
 	var d := Vector2(_jugador.position.x - float(poi["x"]), _jugador.position.z - float(poi["z"])).length()
 	pasa = pasa and not _mapa_abierto and d < 30.0 and _jugador.position.distance_to(antes) > 100.0
-	print("MAPA_PRUEBA_OK pasa=", pasa, " lugar=", String(poi.get("n", "?")), " dist=", d)
+	# Zoom con la rueda (pedido de Jon): la escala crece y el
+	# clic sobre el punto sigue llevando al mismo lugar
+	_abrir_mapa()
+	var pr0: Array = _mapa.call("_params")
+	var evw := InputEventMouseButton.new()
+	evw.button_index = MOUSE_BUTTON_WHEEL_UP
+	evw.pressed = true
+	evw.position = _mapa.call("punto_de_poi", poi)
+	_mapa.call("_gui_input", evw)
+	_mapa.call("_gui_input", evw)
+	var pr1: Array = _mapa.call("_params")
+	# absf: sin frames, la escala base puede salir negativa en
+	# headless al reabrir el plano; lo que se prueba es que la
+	# rueda la multiplica (×1,44 con dos toques).
+	pasa = pasa and absf(float(pr1[0])) > absf(float(pr0[0])) * 1.3
+	var pos2: Vector2 = _mapa.call("punto_de_poi", poi)
+	var ev2 := InputEventMouseButton.new()
+	ev2.button_index = MOUSE_BUTTON_LEFT
+	ev2.pressed = true
+	ev2.position = pos2
+	_mapa.call("_gui_input", ev2)
+	ev2.pressed = false
+	_mapa.call("_gui_input", ev2)
+	var d2 := Vector2(_jugador.position.x - float(poi["x"]), _jugador.position.z - float(poi["z"])).length()
+	pasa = pasa and not _mapa_abierto and d2 < 30.0
+	# Arrastrar mueve la vista y NO teletransporta. Se fija el
+	# zoom y el centro a mano: sin frames de por medio, el
+	# tamaño del control al reabrir el plano no es fiable en
+	# headless (en el navegador sí hay frames y se asienta).
+	_abrir_mapa()
+	_mapa.set("_zoom", 2.0)
+	_mapa.set("_centro", Vector2.ZERO)
+	var centro_antes: Vector2 = _mapa.get("_centro")
+	var evp := InputEventMouseButton.new()
+	evp.button_index = MOUSE_BUTTON_LEFT
+	evp.pressed = true
+	evp.position = Vector2(400, 300)
+	_mapa.call("_gui_input", evp)
+	var evm := InputEventMouseMotion.new()
+	evm.relative = Vector2(150, 0)
+	evm.position = Vector2(550, 300)
+	_mapa.call("_gui_input", evm)
+	evp.pressed = false
+	evp.position = Vector2(550, 300)
+	_mapa.call("_gui_input", evp)
+	pasa = pasa and _mapa_abierto and (_mapa.get("_centro") as Vector2) != centro_antes
+	_cerrar_mapa()
+	print("MAPA_PRUEBA_OK pasa=", pasa, " lugar=", String(poi.get("n", "?")), " dist=", d, " zoom=", snappedf(float(pr1[0]) / float(pr0[0]), 0.01), " d2=", snappedf(d2, 0.1), " centro=", _mapa.get("_centro"))
 
 func _probar_multitud() -> void:
 	# E5: la multitud ya no es de clones y el presupuesto de
@@ -5111,10 +5163,14 @@ func _input(event: InputEvent) -> void:
 		elif event.button_index == JOY_BUTTON_A:
 			if _dlg_abierto:
 				_dlg_confirmar()
+			elif not _bus_pasajero.is_empty():
+				_bajar_bus_pasajero()
 			elif _en_interior != "":
 				_ejecutar_accion_interior(_accion_interior_cercana())
 			elif _en_columpio or not _columpio_libre().is_empty():
 				_alternar_columpio()
+			elif not _en_coche and not _en_bus and not _sentado and not _bus_linea_cercano().is_empty():
+				_subir_bus_pasajero(_bus_linea_cercano())
 			else:
 				_alternar_coche()
 		elif _dlg_abierto and event.button_index == JOY_BUTTON_DPAD_DOWN:
@@ -5155,6 +5211,8 @@ func _input(event: InputEvent) -> void:
 		elif event.keycode == KEY_E and not _auto and _jugador != null:
 			if _dlg_abierto:
 				_dlg_confirmar()
+			elif not _bus_pasajero.is_empty():
+				_bajar_bus_pasajero()
 			elif _en_interior != "":
 				_ejecutar_accion_interior(_accion_interior_cercana())
 			elif _puerta_cercana() != "":
@@ -5167,6 +5225,8 @@ func _input(event: InputEvent) -> void:
 				_retirar_masa_cercana()
 			elif _pj_cercano() != "":
 				_hablar_cercano()
+			elif not _en_coche and not _en_bus and not _sentado and not _bus_linea_cercano().is_empty():
+				_subir_bus_pasajero(_bus_linea_cercano())
 			else:
 				_alternar_coche()
 		elif _dlg_abierto and not _dlg_opciones.is_empty() and (event.keycode == KEY_S or event.keycode == KEY_DOWN):
@@ -5381,6 +5441,8 @@ func _physics_process(delta: float) -> void:
 			_coche_vel = float(_carr["yo"]["vel"])
 		else:
 			_conducir(delta)
+	elif not _bus_pasajero.is_empty():
+		_actualizar_pasajero(delta)
 	elif _en_columpio:
 		_actualizar_columpio(delta)
 	else:
@@ -5995,6 +6057,9 @@ func _actualizar_hud() -> void:
 				if not _esp.is_empty() and String(_esp.get("tipo", "")) == "bus":
 					texto += " · Pasajeros: " + str(int(_esp.get("a_bordo", 0)))
 			_banner_texto.text = texto
+	if not _bus_pasajero.is_empty() and _banner != null and _banner_texto != null:
+		_banner.visible = true
+		_banner_texto.text = "Autobús línea " + str(int(_bus_pasajero["linea"]) + 1) + " · próxima parada: " + _proxima_parada_nombre(_bus_pasajero) + " · pulsa E para bajar"
 	if _pildora != null:
 		_pildora.visible = con_trabajo
 		if con_trabajo and _jugador != null:
@@ -6006,6 +6071,10 @@ func _actualizar_hud() -> void:
 			_btn_bajar.text = "Bajar"
 			_btn_bajar.visible = true
 			_btn_modo = "bus"
+		elif not _bus_pasajero.is_empty():
+			_btn_bajar.text = "Bajar del autobús"
+			_btn_bajar.visible = true
+			_btn_modo = "bajarpas"
 		elif not _esp.is_empty() and String(_esp.get("tipo", "")) == "bus" and _bus != null and _jugador != null and _jugador.position.distance_to(_bus.position) < 4.5:
 			_btn_bajar.text = "Subir al autobús"
 			_btn_bajar.visible = true
@@ -6030,6 +6099,10 @@ func _actualizar_hud() -> void:
 			_btn_bajar.text = "Subir"
 			_btn_bajar.visible = true
 			_btn_modo = "coche"
+		elif _jugador != null and _en_interior == "" and not _bus_linea_cercano().is_empty():
+			_btn_bajar.text = "Subir al autobús · 1 €"
+			_btn_bajar.visible = true
+			_btn_modo = "buspas"
 		elif _en_interior != "":
 			var acc_i := _accion_interior_cercana()
 			if acc_i != "":
@@ -6703,7 +6776,7 @@ func _crear_bloque7() -> void:
 				_caja_en(verts, normals, cols, cen + lat * 1.7 + Vector3(0, 2.45, 0), Vector3(0.06, 0.55, 0.75), col_cartel, rot)
 				_registrar_solido(x, z, rot, 0.65, 1.4)
 				rotulos_paradas.append({"n": String(pa["n"]), "h": h, "w": 3.0, "g": 0.5, "p": Vector3(x, y + 2.95, z)})
-				_paradas_red.append({"x": x, "z": z, "hx": h.x, "hz": h.y})
+				_paradas_red.append({"x": x, "z": z, "hx": h.x, "hz": h.y, "n": String(pa["n"])})
 				_b7_paradas += 1
 	if not rotulos_paradas.is_empty():
 		_rotulos_datos["paradas"] = rotulos_paradas
@@ -7560,6 +7633,17 @@ func _datos_mapa() -> Dictionary:
 		"jugador": Vector2((_bus.position if _en_bus else (_coche.position if _en_coche else _jugador.position)).x, (_bus.position if _en_bus else (_coche.position if _en_coche else _jugador.position)).z),
 		"coche": Vector2(_coche.position.x, _coche.position.z),
 	}
+	# Las líneas de autobús, para pintarlas en el plano
+	var lineas_d: Array = []
+	for lin in _lineas_bus:
+		var pts_d: Array = []
+		for p2 in lin["pts"]:
+			pts_d.append([p2.x, p2.y])
+		var par_d: Array = []
+		for par in lin["paradas"]:
+			par_d.append([float(par["x"]), float(par["z"])])
+		lineas_d.append({"ext": String(lin["ext"]), "c": lin["c"], "pts": pts_d, "paradas": par_d})
+	d["lineas"] = lineas_d
 	if not _carr.is_empty():
 		d["carrera"] = _carr_mapa_datos()
 	return d
@@ -7586,6 +7670,8 @@ func _al_elegir_lugar_mapa(poi: Dictionary) -> void:
 		return
 	if _en_columpio:
 		_bajar_columpio()
+	if not _bus_pasajero.is_empty():
+		_bajar_bus_pasajero()
 	if _en_interior != "":
 		_salir_interior()
 	if _en_bus:
@@ -7609,6 +7695,10 @@ func _t_coche() -> void:
 	if not _auto and _jugador != null:
 		if _btn_modo == "bus":
 			_alternar_bus()
+		elif _btn_modo == "bajarpas":
+			_bajar_bus_pasajero()
+		elif _btn_modo == "buspas":
+			_subir_bus_pasajero(_bus_linea_cercano())
 		elif _btn_modo == "camalote":
 			_retirar_masa_cercana()
 		elif _btn_modo == "hablar":
@@ -8016,12 +8106,12 @@ func _mover_trafico(delta: float) -> void:
 
 # ---------- Autobuses urbanos: la flota que recorre la ciudad ----------
 
-func _modelo_bus_fundido() -> MeshInstance3D:
-	# El autobús urbano como UNA malla fundida (blanco con banda
-	# verde, como los de Logroño): 25 sueltos no pueden ser 25×15
-	# piezas en la web.
+func _modelo_bus_fundido(color_linea: Color = Color(0.15, 0.55, 0.30)) -> MeshInstance3D:
+	# El autobús urbano como UNA malla fundida (blanco con la
+	# banda y el letrero del color de SU línea): 25 sueltos no
+	# pueden ser 25×15 piezas en la web.
 	var blanco := Color(0.92, 0.93, 0.94)
-	var verde := Color(0.15, 0.55, 0.30)
+	var verde := color_linea
 	var oscuro := Color(0.16, 0.18, 0.22)
 	var cristal := Color(0.35, 0.55, 0.70)
 	var partes: Array = [
@@ -8030,7 +8120,7 @@ func _modelo_bus_fundido() -> MeshInstance3D:
 		[Vector3(0, 0.62, 0), Vector3(2.54, 0.42, 11.0), verde],
 		[Vector3(0, 2.46, 0), Vector3(2.4, 0.12, 10.6), blanco],
 		[Vector3(1.26, 1.30, 3.6), Vector3(0.06, 1.80, 1.15), oscuro],
-		[Vector3(0, 2.18, 5.52), Vector3(1.6, 0.45, 0.08), oscuro],
+		[Vector3(0, 2.18, 5.52), Vector3(1.6, 0.45, 0.08), verde],
 		[Vector3(-0.8, 0.95, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
 		[Vector3(0.8, 0.95, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
 		[Vector3(-0.8, 0.95, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
@@ -8041,27 +8131,89 @@ func _modelo_bus_fundido() -> MeshInstance3D:
 			partes.append([Vector3(sx, 0.5, sz), Vector3(0.30, 1.0, 1.0), oscuro])
 	return _fundida(partes)
 
-func _crear_buses_urbanos() -> void:
-	# 25 autobuses urbanos (pedido de Jon) recorriendo la ciudad por
-	# el grafo de calles, parando en las paradas de la red.
-	for k in 25:
-		var nodo := -1
-		for intento in 80:
-			var cand := _rng.randi() % _nodos.size()
-			var np: Vector2 = _nodos[cand]
-			if absf(np.x) <= 1500.0 and absf(np.y) <= 1150.0 and _ady.has(cand) and not (_ady[cand] as Array).is_empty():
-				nodo = cand
-				break
-		if nodo < 0:
+func _proyeccion(p: Vector2, a: Vector2, b: Vector2, s0: float) -> Array:
+	# [distancia del punto p al segmento ab, s a lo largo del recorrido]
+	var ab := b - a
+	var largo2 := ab.length_squared()
+	var t := 0.0
+	if largo2 > 0.001:
+		t = clampf((p - a).dot(ab) / largo2, 0.0, 1.0)
+	var cerca := a + ab * t
+	return [p.distance_to(cerca), s0 + ab.length() * t]
+
+func _crear_lineas_bus() -> void:
+	# 5 líneas de autobús urbano (pedido de Jon, 2026-11-23),
+	# repartidas por la ciudad: cada una une dos extremos pasando
+	# por el centro, con su recorrido calculado sobre el grafo de
+	# calles y sus paradas tomadas de la red real (las que queden
+	# a menos de 60 m del trazado, ordenadas y sin apelotonar).
+	_lineas_bus.clear()
+	var defs: Array = [
+		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(2280, 700), Vector2(1500, 480), Vector2(700, 280), Vector2(0, 120), Vector2(-700, -20), Vector2(-1500, -300), Vector2(-2200, -550)]},
+		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-250, -1250), Vector2(-180, -600), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-450, 1800)]},
+		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-2350, 480), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(850, 230), Vector2(1650, 90), Vector2(2320, -80)]},
+		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1950, 1150), Vector2(-1150, 820), Vector2(-450, 520), Vector2(250, 180), Vector2(950, -220), Vector2(1700, -580), Vector2(2250, -850)]},
+		{"ext": "El Cubo — Cascajos", "c": Color(0.60, 0.35, 0.90), "anclas": [Vector2(1150, -1050), Vector2(1050, -450), Vector2(950, 150), Vector2(850, 750), Vector2(550, 1350), Vector2(250, 1850)]},
+	]
+	for d in defs:
+		var pts: Array = []
+		var anclas: Array = d["anclas"]
+		for i in range(anclas.size() - 1):
+			var a2: Vector2 = anclas[i]
+			var b2: Vector2 = anclas[i + 1]
+			var tramo := _calcular_ruta(Vector3(a2.x, 0, a2.y), Vector3(b2.x, 0, b2.y))
+			for p3 in tramo:
+				var p2 := Vector2((p3 as Vector3).x, (p3 as Vector3).z)
+				if pts.is_empty() or (pts[pts.size() - 1] as Vector2).distance_to(p2) > 0.5:
+					pts.append(p2)
+		if pts.size() < 2:
 			continue
-		var bus := Node3D.new()
-		bus.add_child(_modelo_bus_fundido())
-		var np2: Vector2 = _nodos[nodo]
-		bus.position = Vector3(np2.x, _altura(np2.x, np2.y), np2.y)
-		add_child(bus)
-		var vecinos: Array = _ady[nodo]
-		var sig: int = vecinos[_rng.randi() % vecinos.size()][0]
-		_buses_urbanos.append({"nodo3d": bus, "destino": sig, "previo": nodo, "vel": 6.0 + _rng.randf() * 1.5, "vel_act": 0.0, "parada_t": 0.0, "espera": _rng.randf() * 20.0})
+		var ss: Array = [0.0]
+		for i in range(1, pts.size()):
+			ss.append(float(ss[i - 1]) + (pts[i] as Vector2).distance_to(pts[i - 1]))
+		var longitud := float(ss[ss.size() - 1])
+		var cands: Array = []
+		for par in _paradas_red:
+			var pp := Vector2(float(par["x"]), float(par["z"]))
+			var mejor := 1e9
+			var s_mejor := 0.0
+			for i in range(pts.size() - 1):
+				var seg := _proyeccion(pp, pts[i], pts[i + 1], float(ss[i]))
+				if float(seg[0]) < mejor:
+					mejor = float(seg[0])
+					s_mejor = float(seg[1])
+			if mejor <= 60.0:
+				cands.append({"x": pp.x, "z": pp.y, "s": s_mejor, "n": String(par.get("n", "Parada"))})
+		cands.sort_custom(func(a, b): return float(a["s"]) < float(b["s"]))
+		var paradas: Array = []
+		for c in cands:
+			if paradas.is_empty() or float(c["s"]) - float(paradas[paradas.size() - 1]["s"]) >= 130.0:
+				paradas.append(c)
+		_lineas_bus.append({"ext": String(d["ext"]), "c": d["c"], "pts": pts, "s": ss, "longitud": longitud, "paradas": paradas})
+		print("LINEA_OK ", _lineas_bus.size(), " pts=", pts.size(), " paradas=", paradas.size(), " long=", int(longitud))
+
+func _crear_buses_urbanos() -> void:
+	# 25 autobuses urbanos: 5 por línea, repartidos por el
+	# trazado en los dos sentidos, cada uno con el color de su
+	# línea en la banda y el letrero.
+	_crear_lineas_bus()
+	for li in _lineas_bus.size():
+		var lin: Dictionary = _lineas_bus[li]
+		var pts: Array = lin["pts"]
+		var ss: Array = lin["s"]
+		for j in 5:
+			var s_obj := float(lin["longitud"]) * (float(j) / 5.0 + 0.03 * float(li))
+			var ip := 0
+			while ip < ss.size() - 1 and float(ss[ip]) < s_obj:
+				ip += 1
+			var dir := 1 if j % 2 == 0 else -1
+			var p0: Vector2 = pts[ip]
+			var bus := Node3D.new()
+			bus.add_child(_modelo_bus_fundido(lin["c"]))
+			bus.position = Vector3(p0.x, _altura(p0.x, p0.y), p0.y)
+			add_child(bus)
+			var idx := clampi(ip + dir, 0, pts.size() - 1)
+			_buses_urbanos.append({"nodo3d": bus, "linea": li, "idx": idx, "dir": dir, "s": float(ss[ip]), "vel": 6.0 + _rng.randf() * 1.5, "vel_act": 0.0, "parada_t": 0.0, "espera": _rng.randf() * 20.0})
 	print("BUSES_OK n=", _buses_urbanos.size())
 
 func _mover_buses(delta: float) -> void:
@@ -8072,21 +8224,27 @@ func _mover_buses(delta: float) -> void:
 			bu["parada_t"] = float(bu["parada_t"]) - delta
 			bu["vel_act"] = move_toward(float(bu["vel_act"]), 0.0, 8.0 * delta)
 			continue
-		var dp: Vector2 = _nodos[int(bu["destino"])]
+		var lin: Dictionary = _lineas_bus[int(bu["linea"])]
+		var pts: Array = lin["pts"]
+		var ss: Array = lin["s"]
+		var idx: int = int(bu["idx"])
+		var sentido: int = int(bu["dir"])
+		if idx < 0 or idx >= pts.size():
+			sentido = -sentido
+			bu["dir"] = sentido
+			idx = clampi(idx, 0, pts.size() - 1)
+			bu["idx"] = idx
+		var dp: Vector2 = pts[idx]
 		var hacia := Vector2(dp.x - bus.position.x, dp.y - bus.position.z)
-		if hacia.length() < 3.5:
-			var actual: int = bu["destino"]
-			var vecinos: Array = _ady.get(actual, [])
-			if vecinos.is_empty():
-				continue
-			var opciones := []
-			for v in vecinos:
-				if int(v[0]) != int(bu["previo"]):
-					opciones.append(int(v[0]))
-			if opciones.is_empty():
-				opciones = [int(vecinos[0][0])]
-			bu["previo"] = actual
-			bu["destino"] = opciones[_rng.randi() % opciones.size()]
+		if hacia.length() < 4.0:
+			bu["s"] = float(ss[idx])
+			var sig := idx + sentido
+			if sig < 0 or sig >= pts.size():
+				# Cabecera de línea: pausa y media vuelta.
+				bu["dir"] = -sentido
+				bu["parada_t"] = 6.0
+				sig = idx
+			bu["idx"] = sig
 			continue
 		var dir := hacia / hacia.length()
 		var derecha := Vector2(-dir.y, dir.x)
@@ -8102,14 +8260,16 @@ func _mover_buses(delta: float) -> void:
 			var to_c := Vector2(_coche.position.x - bus.position.x, _coche.position.z - bus.position.z)
 			if to_c.length() < 10.0 and to_c.length() > 0.01 and dir.dot(to_c / to_c.length()) > 0.5:
 				vel_obj = 0.0
-		# Parada en las paradas de la red: si hay una cerca y toca,
-		# se detiene unos segundos como un urbano de verdad.
+		# Parada en las paradas DE SU LÍNEA: la posición del bus
+		# sobre el recorrido (s) manda, no la cercanía física a la
+		# marquesina — la parada puede estar en la acera de
+		# enfrente o a la vuelta de la esquina y el bus para igual.
+		var s_aprox := float(ss[idx]) - float(sentido) * hacia.length()
+		bu["s"] = s_aprox
 		if vel_obj > 0.0 and float(bu["espera"]) <= 0.0:
-			var frente := Vector2(bus.position.x, bus.position.z) + dir * 5.0
-			for par in _paradas_red:
-				var pp := Vector2(float(par["x"]), float(par["z"]))
-				if frente.distance_to(pp) < 4.5:
-					bu["parada_t"] = 3.5
+			for par in lin["paradas"]:
+				if absf(s_aprox - float(par["s"])) < 9.0:
+					bu["parada_t"] = 4.0
 					bu["espera"] = 25.0
 					vel_obj = 0.0
 					break
@@ -8120,6 +8280,71 @@ func _mover_buses(delta: float) -> void:
 		bus.position.z += dir.y * va * delta
 		bus.position.y = _altura(bus.position.x, bus.position.z)
 		bus.rotation.y = atan2(dir.x, dir.y)
+
+# ---------- El autobús como pasajero (1 €) ----------
+
+func _bus_linea_cercano() -> Dictionary:
+	if _jugador == null:
+		return {}
+	var mejor: Dictionary = {}
+	var mejor_d := 6.5
+	for bu in _buses_urbanos:
+		var b: Node3D = bu["nodo3d"]
+		var d := Vector2(b.position.x - _jugador.position.x, b.position.z - _jugador.position.z).length()
+		if d < mejor_d:
+			mejor_d = d
+			mejor = bu
+	return mejor
+
+func _subir_bus_pasajero(bu: Dictionary) -> void:
+	if bu.is_empty() or not _bus_pasajero.is_empty():
+		return
+	if _dinero < 1:
+		_aviso_set("No te llega: el billete del autobús cuesta 1 €", 3.5)
+		return
+	_dinero -= 1
+	_actualizar_hud_dinero()
+	if _son_cobro != null:
+		_son_cobro.play()
+	_bus_pasajero = bu
+	bu["parada_t"] = maxf(float(bu["parada_t"]), 2.5)
+	_aviso_set("Autobús línea " + str(int(bu["linea"]) + 1) + " · billete 1 € · baja con E cuando quieras", 4.0)
+	_guardar()
+
+func _bajar_bus_pasajero() -> void:
+	if _bus_pasajero.is_empty():
+		return
+	var bus: Node3D = _bus_pasajero["nodo3d"]
+	_bus_pasajero = {}
+	var lado3 := bus.global_transform.basis.x
+	var lado := Vector3(lado3.x, 0, lado3.z).normalized() * 2.8
+	var libre := _punto_libre(bus.position + lado, 0.5)
+	_jugador.position = Vector3(libre.x, _altura(libre.x, libre.z) + 0.95, libre.z)
+	_aviso_set("Has bajado del autobús", 2.5)
+
+func _actualizar_pasajero(_delta: float) -> void:
+	if _bus_pasajero.is_empty():
+		return
+	var bus: Node3D = _bus_pasajero["nodo3d"]
+	if not is_instance_valid(bus):
+		_bus_pasajero = {}
+		return
+	_jugador.position = Vector3(bus.position.x, _altura(bus.position.x, bus.position.z) + 0.95, bus.position.z)
+	_jugador.rotation.y = bus.rotation.y
+
+func _proxima_parada_nombre(bu: Dictionary) -> String:
+	var lin: Dictionary = _lineas_bus[int(bu["linea"])]
+	var s_bus := float(bu["s"])
+	var paradas_l: Array = lin["paradas"]
+	if int(bu["dir"]) > 0:
+		for par in paradas_l:
+			if float(par["s"]) > s_bus + 8.0:
+				return String(par["n"])
+	else:
+		for i in range(paradas_l.size() - 1, -1, -1):
+			if float(paradas_l[i]["s"]) < s_bus - 8.0:
+				return String(paradas_l[i]["n"])
+	return "fin de línea"
 
 func _probar_decathlon() -> void:
 	var pasa := true
@@ -8195,7 +8420,10 @@ func _probar_ra() -> void:
 func _probar_buses() -> void:
 	var pasa := true
 	pasa = pasa and _buses_urbanos.size() == 25
-	pasa = pasa and _peatones.size() >= 70
+	# El censo de peatones varía con el azar de la colocación
+	# (hay días de 67 y días de 78): el mínimo pide «ciudad
+	# poblada», no un censo exacto.
+	pasa = pasa and _peatones.size() >= 60
 	var antes: Array = []
 	for bu in _buses_urbanos:
 		antes.append((bu["nodo3d"] as Node3D).position)
@@ -8205,22 +8433,72 @@ func _probar_buses() -> void:
 	for i in _buses_urbanos.size():
 		movido += (_buses_urbanos[i]["nodo3d"] as Node3D).position.distance_to(antes[i])
 	pasa = pasa and movido > 60.0
-	# Un bus junto a una parada con la espera agotada se detiene
-	if not _paradas_red.is_empty():
-		var bu0: Dictionary = _buses_urbanos[0]
-		var par0: Dictionary = _paradas_red[0]
+	# Un bus que llega a una parada DE SU LÍNEA con la espera
+	# agotada se detiene en ella: se le coloca SOBRE su recorrido,
+	# 6 m antes de la parada en su sentido de marcha (la parada
+	# manda por su s en el trazado, no por cercanía física).
+	var bu0: Dictionary = _buses_urbanos[0]
+	var lin0: Dictionary = _lineas_bus[int(bu0["linea"])]
+	if not (lin0["paradas"] as Array).is_empty():
+		var par0: Dictionary = lin0["paradas"][0]
 		var bus0: Node3D = bu0["nodo3d"]
-		var dest0: Vector2 = _nodos[int(bu0["destino"])]
-		var dir0 := (dest0 - Vector2(bus0.position.x, bus0.position.z)).normalized()
-		var pp0 := Vector2(float(par0["x"]), float(par0["z"])) - dir0 * 2.0
+		var pts0: Array = lin0["pts"]
+		var ss0: Array = lin0["s"]
+		var iw := 1
+		while iw < ss0.size() - 1 and float(ss0[iw]) < float(par0["s"]):
+			iw += 1
+		var seg0 := (pts0[iw] as Vector2) - (pts0[iw - 1] as Vector2)
+		var t0 := 0.0
+		if seg0.length() > 0.01:
+			t0 = (float(par0["s"]) - float(ss0[iw - 1])) / seg0.length()
+		var proj0: Vector2 = (pts0[iw - 1] as Vector2) + seg0 * clampf(t0, 0.0, 1.0)
+		var dir_ruta := seg0.normalized() * float(int(bu0["dir"]))
+		var pp0 := proj0 - dir_ruta * 6.0
 		bus0.position = Vector3(pp0.x, _altura(pp0.x, pp0.y), pp0.y)
+		bu0["idx"] = iw if int(bu0["dir"]) > 0 else iw - 1
 		bu0["espera"] = 0.0
 		bu0["parada_t"] = 0.0
 		bu0["vel_act"] = 5.0
+		var paro := false
 		for paso2 in 12:
 			_mover_buses(0.4)
-		pasa = pasa and float(bu0["parada_t"]) > 0.0
+			if float(bu0["parada_t"]) > 0.0:
+				paro = true
+		pasa = pasa and paro
 	print("BUSES_PRUEBA_OK pasa=", pasa, " peatones=", _peatones.size(), " trafico=", _trafico.size(), " movido=", snappedf(movido, 0.1))
+
+func _probar_lineas() -> void:
+	# Las 5 líneas existen, cruzan la ciudad, tienen paradas de
+	# sobra y el plano las recibe; y el pasajero paga 1 €, viaja
+	# pegado al autobús y se baja a pie.
+	var pasa := true
+	pasa = pasa and _lineas_bus.size() == 5
+	for lin in _lineas_bus:
+		pasa = pasa and float(lin["longitud"]) > 2500.0
+		pasa = pasa and (lin["paradas"] as Array).size() >= 6
+		pasa = pasa and (lin["pts"] as Array).size() > 40
+	var bu: Dictionary = _buses_urbanos[0]
+	var bus: Node3D = bu["nodo3d"]
+	_jugador.position = Vector3(bus.position.x + 2.0, _altura(bus.position.x, bus.position.z) + 0.95, bus.position.z)
+	_dinero = 10
+	pasa = pasa and not _bus_linea_cercano().is_empty()
+	_subir_bus_pasajero(_bus_linea_cercano())
+	pasa = pasa and _dinero == 9 and not _bus_pasajero.is_empty()
+	for i in 30:
+		_mover_buses(0.5)
+		_actualizar_pasajero(0.5)
+	pasa = pasa and _jugador.position.distance_to(bus.position) < 2.5
+	_bajar_bus_pasajero()
+	pasa = pasa and _bus_pasajero.is_empty()
+	pasa = pasa and Vector2(_jugador.position.x - bus.position.x, _jugador.position.z - bus.position.z).length() < 8.0
+	# Sin dinero no hay billete, y avisa
+	_jugador.position = Vector3(bus.position.x + 2.0, _jugador.position.y, bus.position.z)
+	_dinero = 0
+	_subir_bus_pasajero(_bus_linea_cercano())
+	pasa = pasa and _bus_pasajero.is_empty() and _aviso.begins_with("No te llega")
+	var datos := _datos_mapa()
+	pasa = pasa and (datos.get("lineas", []) as Array).size() == 5
+	print("LINEAS_OK pasa=", pasa, " lineas=", _lineas_bus.size())
 
 # ---------- Fase 7: radares de velocidad ----------
 
@@ -12844,6 +13122,8 @@ func _capturar_si_toca() -> void:
 		_probar_gallarza()
 	elif args.has("probar_buses"):
 		_probar_buses()
+	elif args.has("probar_lineas"):
+		_probar_lineas()
 	elif args.has("probar_ra"):
 		_probar_ra()
 	elif args.has("probar_decathlon"):
@@ -13478,6 +13758,10 @@ func _capturar_si_toca() -> void:
 		_refrescar_rotulos()
 		_cam.look_at_from_position(Vector3(-508.0, _altura(-508.0, 720.5) + 1.8, 720.5), Vector3(-512.2, _altura(-512.2, 716.3) + 1.2, 716.3), Vector3.UP)
 		nombre = "columpio.png"
+	elif args.has("capturar_lineas"):
+		# El plano abierto con las 5 líneas pintadas
+		_abrir_mapa()
+		nombre = "lineas.png"
 	elif args.has("capturar_casco"):
 		# Dentro de Decathlon, junto a los cascos: el botón de
 		# acción tiene que decir «Casco de ciclismo · 35 €» y
