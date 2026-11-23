@@ -50,6 +50,11 @@ var _mis_coches: Array = [{"id": 0, "danio": 0, "motor": 0, "frenos": 0}]
 var _coche_activo := 0
 var _danio_cd := 0.0
 var _acel_forzado := -1.0
+var _gas_espacio := false
+var _pan_en_mano := false
+var _pan_nodo: Node3D = null
+var _en_columpio := false
+var _aviso_columpio_cd := 0.0
 var _en_coche := false
 var _origen := Vector3.ZERO
 var _destino := Vector3.ZERO
@@ -2992,8 +2997,11 @@ func _locales_tile(cont: Node3D, locales: Array) -> void:
 			var gy := _altura(px, pz)
 			var cen := Vector2(px, pz)
 			_caja_en(verts, normals, cols, Vector3(px, gy + 0.05, pz), Vector3(13.0, 0.10, 12.0), Color(0.60, 0.60, 0.62), rot)
-			_caja_en(verts, normals, cols, Vector3(px, gy + 4.85, pz), Vector3(7.2, 0.42, 11.4), col, rot)
-			_caja_en(verts, normals, cols, Vector3(px, gy + 4.60, pz), Vector3(7.35, 0.10, 11.55), Color(0.93, 0.93, 0.94), rot)
+			_caja_en(verts, normals, cols, Vector3(px, gy + 4.95, pz), Vector3(7.2, 0.42, 11.4), col, rot)
+			# La cenefa clara de la marquesina: de canto, desde
+			# la calle, es lo que hace que se lea «gasolinera»
+			# (la losa naranja sola se perdía contra el cielo).
+			_caja_en(verts, normals, cols, Vector3(px, gy + 4.60, pz), Vector3(7.5, 0.52, 11.7), Color(0.93, 0.93, 0.94), rot)
 			for ph in [-2.9, 2.9]:
 				for pd in [-4.7, 4.7]:
 					var pp: Vector2 = cen + hacia * ph + dir * pd
@@ -3001,17 +3009,34 @@ func _locales_tile(cont: Node3D, locales: Array) -> void:
 			for pd2 in [-2.3, 0.0, 2.3]:
 				var sp: Vector2 = cen + dir * pd2
 				var sy := _altura(sp.x, sp.y)
-				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 0.30, sp.y), Vector3(1.5, 0.12, 0.8), Color(0.45, 0.45, 0.48), rot)
-				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 0.85, sp.y), Vector3(0.55, 1.05, 0.38), Color(0.22, 0.23, 0.26), rot)
-				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 1.42, sp.y), Vector3(0.57, 0.12, 0.40), col, rot)
+				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 0.30, sp.y), Vector3(1.6, 0.12, 0.9), Color(0.45, 0.45, 0.48), rot)
+				# El surtidor claro y con su banda de marca:
+				# el oscuro antiguo no se veía ni de cerca.
+				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 0.92, sp.y), Vector3(0.62, 1.25, 0.44), Color(0.88, 0.88, 0.90), rot)
+				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 1.05, sp.y), Vector3(0.64, 0.55, 0.46), col, rot)
+				_caja_en(verts, normals, cols, Vector3(sp.x, sy + 1.60, sp.y), Vector3(0.64, 0.12, 0.46), col, rot)
+			# Dos coches repostando: sin ellos la estación
+			# parecía abandonada (Jon: «no se ven coches»).
+			# Van al lado de dentro: desde la calle se ven los
+			# surtidores delante y los coches detrás.
+			var rot_coche := atan2(dir.x, dir.y)
+			for pd3 in [-2.3, 2.3]:
+				var cp: Vector2 = cen + dir * pd3 - hacia * 1.8
+				_coche_aparcado(verts, normals, cols, cp.x, cp.y, rot_coche, int(pd3 * 10.0) + 40)
 			var tp2: Vector2 = cen - hacia * 5.4
 			var ty := _altura(tp2.x, tp2.y)
 			_caja_en(verts, normals, cols, Vector3(tp2.x, ty + 1.35, tp2.y), Vector3(3.4, 2.70, 5.6), Color(0.88, 0.87, 0.84), rot)
 			_caja_en(verts, normals, cols, Vector3(tp2.x, ty + 2.85, tp2.y), Vector3(3.5, 0.28, 5.7), col, rot)
+			# El escaparate oscuro de la tienda, hacia la calle
+			var tf: Vector2 = tp2 + hacia * 1.72
+			var tfy := _altura(tf.x, tf.y)
+			_caja_en(verts, normals, cols, Vector3(tf.x, tfy + 1.15, tf.y), Vector3(0.14, 1.70, 4.6), Color(0.16, 0.19, 0.24), rot)
 			var tot: Vector2 = cen + hacia * 6.2 + dir * 5.2
 			var toy := _altura(tot.x, tot.y)
 			_caja_en(verts, normals, cols, Vector3(tot.x, toy + 2.10, tot.y), Vector3(0.26, 4.20, 0.26), Color(0.30, 0.30, 0.33), 0.0)
 			_caja_en(verts, normals, cols, Vector3(tot.x, toy + 3.60, tot.y), Vector3(0.20, 1.70, 1.25), col, rot)
+			# La tabla de precios, blanca bajo el panel de marca
+			_caja_en(verts, normals, cols, Vector3(tot.x, toy + 2.30, tot.y), Vector3(0.18, 1.05, 1.25), Color(0.95, 0.95, 0.96), rot)
 			_rotulos_tile_actual.append({"n": String(l["n"]), "h": hacia, "w": 1.15, "p": Vector3(tot.x + hacia.x * 0.4, toy + 3.60, tot.y + hacia.y * 0.4)})
 			n += 1
 			continue
@@ -4164,6 +4189,7 @@ func _cambiar_personaje() -> void:
 	add_child(_jugador)
 	_jugador.position = pos
 	_jugador.rotation.y = rot
+	_refrescar_pan()
 	if _btn_personaje_tel != null:
 		_btn_personaje_tel.text = "Personaje: chica" if _personaje == 1 else "Personaje: chico"
 	_guardar()
@@ -4617,11 +4643,92 @@ func _probar_gallarza() -> void:
 	_mover_peatones(0.6)
 	var p1: Vector3 = (_balon_gal["nodo"] as Node3D).position
 	pasa = pasa and p0.distance_to(p1) > 0.5
-	# El columpio ocupado se balancea
-	_mover_peatones(0.4)
+	# El columpio ocupado se balancea (con el reloj en dos
+	# instantes distintos: a _tiempo 0 el seno vale 0 y la
+	# comprobación antigua fallaba sin que nada estuviera roto)
 	var piv0: Node3D = _columpios[0]["pivote"]
-	pasa = pasa and absf(piv0.rotation.x) > 0.02
-	print("GALLARZA_PRUEBA_OK pasa=", pasa, " verde=", _gallarza_verde, " en_parque=", en_parque)
+	_tiempo = 0.8
+	_mover_peatones(0.1)
+	var rot_a := absf(piv0.rotation.x)
+	_tiempo = 1.6
+	_mover_peatones(0.1)
+	pasa = pasa and (rot_a > 0.02 or absf(piv0.rotation.x) > 0.02)
+	# Montarse en el columpio libre con la E (pedido de Jon):
+	# el jugador queda sentado en el asiento y se baja bien.
+	_jugador.position = Vector3(-511.2, _altura(-511.2, 716.3) + 0.95, 716.3)
+	var libre_ok := not _columpio_libre().is_empty()
+	pasa = pasa and libre_ok
+	_alternar_columpio()
+	var montado_ok := _en_columpio
+	pasa = pasa and montado_ok
+	_mover_peatones(0.4)
+	_actualizar_columpio(0.4)
+	var asiento: Vector3 = (_columpios[1]["pivote"] as Node3D).to_global(Vector3(0, -1.40, 0.03))
+	var dist_asiento := _jugador.position.distance_to(asiento)
+	pasa = pasa and dist_asiento < 0.05
+	_bajar_columpio()
+	pasa = pasa and not _en_columpio
+	print("GALLARZA_PRUEBA_OK pasa=", pasa, " verde=", _gallarza_verde, " en_parque=", en_parque, " libre=", libre_ok, " montado=", montado_ok, " dist_asiento=", dist_asiento)
+
+func _probar_pan() -> void:
+	# La barra comprada se ve en la mano (pedido de Jon) y se
+	# esconde donde las manos van al volante.
+	var pasa := true
+	_dinero = 10
+	_comprar_pan()
+	pasa = pasa and _pan_en_mano and _pan_nodo != null and is_instance_valid(_pan_nodo)
+	_en_coche = true
+	_refrescar_pan()
+	pasa = pasa and _pan_nodo == null
+	_en_coche = false
+	_refrescar_pan()
+	pasa = pasa and _pan_nodo != null and is_instance_valid(_pan_nodo)
+	print("PAN_PRUEBA_OK pasa=", pasa, " dinero=", _dinero)
+
+func _probar_coche() -> void:
+	# Dos quejas de Jon con el coche: «no acelera con la tecla
+	# espacio» y «las teclas derecha/izquierda están al revés».
+	# Se prueban con teclas simuladas de verdad, como la bici.
+	var pasa := true
+	_usar_coche(0)
+	_en_coche = true
+	_coche.position = Vector3(-500, _altura(-500, 173), 173)
+	_coche_dir = 0.0
+	_coche.rotation.y = 0.0
+	_coche_vel = 0.0
+	var pulsar := func(codigo: int, bajar: bool) -> void:
+		var ev := InputEventKey.new()
+		ev.keycode = codigo
+		ev.pressed = bajar
+		Input.parse_input_event(ev)
+	pulsar.call(KEY_SPACE, true)
+	await get_tree().process_frame
+	_conducir(0.5)
+	var vel_esp := _coche_vel
+	pasa = pasa and vel_esp > 0.5
+	pulsar.call(KEY_SPACE, false)
+	# Yendo hacia +Z (el sur), la derecha del conductor es -X
+	# (el oeste): con la D el rumbo tiene que BAJAR, no subir.
+	_coche.position = Vector3(-500, _altura(-500, 173), 173)
+	_coche_vel = 8.0
+	_coche_dir = 0.0
+	pulsar.call(KEY_D, true)
+	await get_tree().process_frame
+	for f in 10:
+		_conducir(0.05)
+	pulsar.call(KEY_D, false)
+	var dir_d := _coche_dir
+	pasa = pasa and dir_d < -0.05
+	_coche.position = Vector3(-500, _altura(-500, 173), 173)
+	_coche_vel = 8.0
+	_coche_dir = 0.0
+	pulsar.call(KEY_A, true)
+	await get_tree().process_frame
+	for f in 10:
+		_conducir(0.05)
+	pulsar.call(KEY_A, false)
+	pasa = pasa and _coche_dir > 0.05
+	print("COCHE_PRUEBA_OK pasa=", pasa, " vel_espacio=", vel_esp, " dir_D=", dir_d, " dir_A=", _coche_dir)
 
 func _probar_bici() -> void:
 	var pasa := true
@@ -4844,6 +4951,8 @@ func _input(event: InputEvent) -> void:
 		elif event.button_index == JOY_BUTTON_A:
 			if _dlg_abierto:
 				_dlg_confirmar()
+			elif _en_columpio or not _columpio_libre().is_empty():
+				_alternar_columpio()
 			else:
 				_alternar_coche()
 		elif _dlg_abierto and event.button_index == JOY_BUTTON_DPAD_DOWN:
@@ -4863,6 +4972,12 @@ func _input(event: InputEvent) -> void:
 			_t_ayuda()
 		elif event.button_index == JOY_BUTTON_LEFT_SHOULDER:
 			_alternar_sentarse()
+	if event is InputEventKey and event.keycode == KEY_SPACE and not event.echo:
+		# El espacio también acelera, memorizado por evento: en
+		# el navegador la consulta directa de la tecla puede
+		# fallar si el lienzo pierde el foco un instante (Jon:
+		# «el coche no acelera con la tecla espacio»).
+		_gas_espacio = event.pressed
 	if event is InputEventKey and event.pressed and not event.echo:
 		if _son_amb != null and not _son_amb.playing:
 			_son_amb.play()
@@ -4900,6 +5015,8 @@ func _input(event: InputEvent) -> void:
 						_salir_interior()
 			elif _puerta_cercana() != "":
 				_entrar_interior(_puerta_cercana())
+			elif _en_columpio or not _columpio_libre().is_empty():
+				_alternar_columpio()
 			elif not _esp.is_empty() and String(_esp.get("tipo", "")) == "bus" and _bus != null and (_en_bus or _jugador.position.distance_to(_bus.position) < 4.5):
 				_alternar_bus()
 			elif not _esp.is_empty() and String(_esp.get("tipo", "")) == "camalote" and _masa_cercana() != null:
@@ -5049,6 +5166,7 @@ func _alternar_coche() -> void:
 			_sonar("puerta_cerrar")
 			_sonar("arranque")
 		_musica_para(true)
+	_refrescar_pan()
 	_refrescar_tactil()
 	_actualizar_hud()
 
@@ -5119,6 +5237,8 @@ func _physics_process(delta: float) -> void:
 			_coche_vel = float(_carr["yo"]["vel"])
 		else:
 			_conducir(delta)
+	elif _en_columpio:
+		_actualizar_columpio(delta)
 	else:
 		if _nadando:
 			_nadar(delta)
@@ -5222,6 +5342,11 @@ func _physics_process(delta: float) -> void:
 			if not _en_coche and not _sentado and _tiempo > _aviso_banco_cd and not _banco_cercano().is_empty():
 				_aviso_banco_cd = _tiempo + 14.0
 				_aviso = "Pulsa F para sentarte en el banco"
+				_aviso_hasta = _tiempo + 2.5
+				_actualizar_hud()
+			if not _en_coche and not _en_columpio and _en_interior == "" and _tiempo > _aviso_columpio_cd and not _columpio_libre().is_empty():
+				_aviso_columpio_cd = _tiempo + 14.0
+				_aviso = "Pulsa E para montarte en el columpio"
 				_aviso_hasta = _tiempo + 2.5
 				_actualizar_hud()
 			if _mapa_abierto:
@@ -5387,7 +5512,12 @@ func _nadar(delta: float) -> void:
 	_jugador.rotation.x = 0.42
 	_fase_paso += delta * 4.5
 	_brazo_i.rotation.x = sin(_fase_paso) * 1.15
-	_brazo_d.rotation.x = sin(_fase_paso + PI) * 1.15
+	if _pan_en_mano:
+		# Con la barra en la mano, el brazo derecho va medio
+		# doblado y apenas se balancea.
+		_brazo_d.rotation.x = -0.55 + sin(_fase_paso + PI) * 0.15
+	else:
+		_brazo_d.rotation.x = sin(_fase_paso + PI) * 1.15
 	_pierna_i.rotation.x = sin(_fase_paso * 1.7) * 0.35
 	_pierna_d.rotation.x = sin(_fase_paso * 1.7 + PI) * 0.35
 
@@ -5426,6 +5556,8 @@ func _conducir(delta: float) -> void:
 			acel = 1.0
 		if Input.is_key_pressed(KEY_SPACE):
 			acel = 1.0
+		if _gas_espacio:
+			acel = 1.0
 		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 			acel = -0.7
 		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
@@ -5460,6 +5592,11 @@ func _conducir(delta: float) -> void:
 				acel = 1.0
 			elif pad_y > 0.3:
 				acel = -0.7
+	if not _auto:
+		# Las manos giran al contrario que el piloto automático:
+		# con la cámara detrás del coche, la D tiene que llevar
+		# el morro a la derecha (Jon: «están al revés»).
+		giro = -giro
 	var st := _stats_activo()
 	if acel > 0.0:
 		_coche_vel += acel * float(st["acel"]) * delta
@@ -6036,6 +6173,12 @@ func _crear_interiores() -> void:
 			var np: Vector2 = _nodos[nodo_g]
 			fuera = Vector3(np.x, 0, np.y)
 		fuera = _punto_libre(fuera + Vector3(3.0, 0, 3.0), 0.5)
+		if id == "decathlon":
+			# La puerta de verdad es la del frente de marca, que
+			# mira al aparcamiento (al este). El ajuste al grafo
+			# dejaba la entrada a casi 40 m, dentro de la nave, y
+			# Jon no podía entrar estando en la puerta.
+			fuera = _punto_libre(Vector3(-2455.0, 0, 1564.0), 0.5)
 		fuera.y = _altura_terreno(fuera.x, fuera.z)
 		var col_ext: Color = d[3]
 		_marcador(fuera, col_ext, true, 0.6, true)
@@ -6451,6 +6594,7 @@ func _entrar_interior(id: String) -> void:
 	_jugador.position = den + Vector3(0, 0.95, 0)
 	_dir_jugador = PI
 	_sonar("puerta_abrir")
+	_refrescar_pan()
 	if id == "ayuntamiento" and not _empleo_desbloqueado:
 		_empleo_desbloqueado = true
 		_aviso = "Ayuntamiento: ya puedes aceptar trabajos especiales"
@@ -6462,6 +6606,7 @@ func _salir_interior() -> void:
 	_en_interior = ""
 	_jugador.position = _volver_a
 	_sonar("puerta_cerrar")
+	_refrescar_pan()
 	print("INTERIOR_SALE")
 
 func _comprobar_salida_interior() -> void:
@@ -6488,10 +6633,27 @@ func _dormir() -> void:
 	_sonar("cobro")
 	print("DORMIR_OK dia=", _dia)
 
+func _refrescar_pan() -> void:
+	# La barra comprada se ve en la mano derecha hasta entregar
+	# la misión de Carmen o entrar en casa; en coche o en bus
+	# las manos van al volante y no se ve (Jon: «cuando salgo
+	# de la panadería no llevo ninguna barra en la mano»).
+	if _pan_nodo != null:
+		if is_instance_valid(_pan_nodo):
+			_pan_nodo.queue_free()
+		_pan_nodo = null
+	if not _pan_en_mano or _brazo_d == null or _en_coche or _en_bus or _en_interior == "piso":
+		return
+	var pan := _pieza(Vector3(0.10, 0.10, 0.46), Vector3(0, -0.72, 0.10), Color(0.85, 0.62, 0.33))
+	_brazo_d.add_child(pan)
+	_pan_nodo = pan
+
 func _comprar_pan() -> void:
 	if _dinero < 2:
 		return
 	_dinero -= 2
+	_pan_en_mano = true
+	_refrescar_pan()
 	_actualizar_hud_dinero()
 	_guardar()
 	_sonar("cobro")
@@ -7695,6 +7857,11 @@ func _mover_buses(delta: float) -> void:
 func _probar_decathlon() -> void:
 	var pasa := true
 	pasa = pasa and _interiores.has("decathlon")
+	# El camino de verdad: de pie ante la puerta visible del
+	# frente de marca (-2458, 1564), la E tiene que ofrecer la
+	# entrada (Jon: «estoy en la puerta y no puedo entrar»).
+	_jugador.position = Vector3(-2456.0, _altura(-2456.0, 1564.0) + 0.95, 1564.0)
+	pasa = pasa and _puerta_cercana() == "decathlon"
 	_entrar_interior("decathlon")
 	pasa = pasa and _en_interior == "decathlon"
 	var accs: Dictionary = _interiores["decathlon"]["acciones"]
@@ -8084,6 +8251,7 @@ func _alternar_bus() -> void:
 		if not _esp.is_empty() and String(_esp.get("tipo", "")) == "bus" and not bool(_esp["entro"]):
 			_esp["entro"] = true
 			_servir_parada()
+	_refrescar_pan()
 	_refrescar_tactil()
 	_actualizar_hud()
 
@@ -8106,6 +8274,8 @@ func _conducir_bus(delta: float) -> void:
 		if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
 			acel = 1.0
 		if Input.is_key_pressed(KEY_SPACE):
+			acel = 1.0
+		if _gas_espacio:
 			acel = 1.0
 		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 			acel = -0.7
@@ -8132,6 +8302,9 @@ func _conducir_bus(delta: float) -> void:
 			acel = gat_d
 		elif gat_i > 0.05:
 			acel = -0.7 * gat_i
+		# Igual que en el coche: el giro de las manos va al
+		# revés que el del piloto automático.
+		giro = -giro
 	if acel > 0.0:
 		_vel_bus += acel * 4.5 * delta
 	elif acel < 0.0:
@@ -9161,6 +9334,10 @@ func _hist_completar() -> void:
 	if paga > 0:
 		_dinero += paga
 		_sonar("cobro")
+	if int(_hist["idx"]) == 0 and _pan_en_mano:
+		# La barra llega a su destino: la mano queda libre.
+		_pan_en_mano = false
+		_refrescar_pan()
 	_historia_idx += 1
 	_hist = {}
 	_guardar()
@@ -10779,6 +10956,75 @@ func _actualizar_visibilidad() -> void:
 		var bn: Node3D = _balon_gal["nodo"]
 		bn.visible = bn.position.distance_squared_to(ref) < 200.0 * 200.0
 
+func _columpio_libre() -> Dictionary:
+	# El columpio sin niño de Gallarza, si el jugador está
+	# junto a su asiento.
+	if _jugador == null or _columpios.size() < 2:
+		return {}
+	var col: Dictionary = _columpios[1]
+	var piv: Node3D = col["pivote"]
+	if Vector2(_jugador.position.x - piv.position.x, _jugador.position.z - piv.position.z).length() < 1.7:
+		return col
+	return {}
+
+func _alternar_columpio() -> void:
+	if _en_columpio:
+		_bajar_columpio()
+		return
+	if _en_coche or _en_bus or _en_interior != "" or _sentado or _nadando:
+		return
+	if _columpio_libre().is_empty():
+		return
+	_en_columpio = true
+	_columpios[1]["fase_propia"] = 0.0
+	_aviso_set("¡A columpiarse! W para coger impulso, S para frenar, E para bajarte", 4.0)
+
+func _bajar_columpio() -> void:
+	if not _en_columpio:
+		return
+	_en_columpio = false
+	var col: Dictionary = _columpios[1]
+	# El balanceo libre continúa sin salto: la fase propia
+	# se traduce a la fase del reloj global.
+	col["fase"] = float(col.get("fase_propia", 0.0)) - _tiempo * 1.35
+	col.erase("fase_propia")
+	_jugador.position = Vector3(-510.2, _altura(-510.2, 716.3) + 0.95, 716.3)
+	_dir_jugador = 0.0
+	_jugador.rotation.y = 0.0
+	_pierna_i.rotation.x = 0.0
+	_pierna_d.rotation.x = 0.0
+	_brazo_i.rotation.x = 0.0
+	_brazo_d.rotation.x = 0.0
+	if _rodilla_i != null:
+		_rodilla_i.rotation.x = 0.0
+		_rodilla_d.rotation.x = 0.0
+	if _codo_i != null:
+		_codo_i.rotation.x = 0.0
+		_codo_d.rotation.x = 0.0
+
+func _actualizar_columpio(_delta: float) -> void:
+	# Sentado en el asiento: el sitio sale del pivote, como
+	# el del niño del otro columpio, y la postura es la de
+	# estar columpiándose (piernas al vaivén, manos a las
+	# cadenas).
+	var col: Dictionary = _columpios[1]
+	var piv: Node3D = col["pivote"]
+	_jugador.position = piv.to_global(Vector3(0, -1.40, 0.03))
+	_jugador.rotation.y = 0.0
+	var ond := sin(float(col.get("fase_propia", 0.0)))
+	_pierna_i.rotation.x = -1.30 + ond * 0.35
+	_pierna_d.rotation.x = -1.30 + ond * 0.35
+	_brazo_i.rotation.x = -2.50
+	_brazo_d.rotation.x = -2.50
+	if _rodilla_i != null:
+		_rodilla_i.rotation.x = 1.05
+		_rodilla_d.rotation.x = 1.05
+	if _codo_i != null:
+		_codo_i.rotation.x = -0.35
+		_codo_d.rotation.x = -0.35
+	_aviso = "W · coger impulso — S · frenar — E · bajarte"
+	_aviso_hasta = _tiempo + 0.6
+
 func _mover_peatones(delta: float) -> void:
 	for peat in _peatones:
 		var raiz: Node3D = peat["raiz"]
@@ -10867,7 +11113,25 @@ func _mover_peatones(delta: float) -> void:
 	# piernas siguiendo el vaivén; y el balón que va y viene.
 	for col in _columpios:
 		var piv_c: Node3D = col["pivote"]
-		var ond := sin(_tiempo * 1.35 + float(col["fase"]))
+		var ond := 0.0
+		if col.has("fase_propia"):
+			# Lo mueve el jugador montado: péndulo con su
+			# propia fase; la W coge impulso, la S frena, y
+			# el aire lo va calmando poco a poco.
+			var fp := float(col["fase_propia"]) + delta * 2.6
+			col["fase_propia"] = fp
+			var amp_c := float(col["amp"])
+			if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+				amp_c = minf(amp_c + delta * 0.22, 0.85)
+			elif Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+				amp_c = maxf(amp_c - delta * 0.45, 0.0)
+			amp_c = maxf(amp_c - delta * 0.015, 0.0)
+			col["amp"] = amp_c
+			ond = sin(fp)
+		else:
+			ond = sin(_tiempo * 1.35 + float(col["fase"]))
+			if float(col["amp"]) > 0.16:
+				col["amp"] = maxf(0.16, float(col["amp"]) - delta * 0.04)
 		piv_c.rotation.x = ond * float(col["amp"])
 		var dc: Dictionary = col["d"]
 		if not dc.is_empty():
@@ -11790,7 +12054,10 @@ func _probar_controles() -> void:
 	# anda en sentido contrario, como una persona.
 	if _ayuda_abierta:
 		_cerrar_ayuda()
-	_jugador.position = Vector3(-259, _altura(-259, 271) + 0.95, 271)
+	# En plena Gran Vía, sin paredes cerca: en el Espolón la
+	# caminata de prueba resbalaba por un borde y el avance
+	# salía «false» sin que el control fallara.
+	_jugador.position = Vector3(-500, _altura(-500, 173) + 0.95, 173)
 	_dir_jugador = 0.0
 	_jugador.rotation.y = 0.0
 	var pulsar := func(codigo: int, bajar: bool) -> void:
@@ -12236,6 +12503,10 @@ func _capturar_si_toca() -> void:
 		_probar_agua()
 	elif args.has("probar_bici"):
 		_probar_bici()
+	elif args.has("probar_coche"):
+		_probar_coche()
+	elif args.has("probar_pan"):
+		_probar_pan()
 	elif args.has("probar_gallarza"):
 		_probar_gallarza()
 	elif args.has("probar_buses"):
@@ -12377,9 +12648,9 @@ func _capturar_si_toca() -> void:
 		# La gasolinera de Las Gaunas (Repsol, Av. de Madrid 25)
 		for dt in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(0, 0)]:
 			_construir_tile(_tile_de(Vector2(-424, 1553)) + dt)
-		_jugador.position = Vector3(-445.0, _altura(-445.0, 1562.0) + 0.95, 1562.0)
+		_jugador.position = Vector3(-440.0, _altura(-440.0, 1560.0) + 0.95, 1560.0)
 		_refrescar_rotulos()
-		_cam.look_at_from_position(Vector3(-443.0, _altura(-443.0, 1561.0) + 2.6, 1561.0), Vector3(-424.0, _altura(-424.0, 1553.0) + 2.4, 1553.0), Vector3.UP)
+		_cam.look_at_from_position(Vector3(-439.0, _altura(-439.0, 1559.0) + 2.3, 1559.0), Vector3(-423.5, _altura(-423.5, 1552.5) + 1.7, 1552.5), Vector3.UP)
 		nombre = "gasolinera.png"
 	elif args.has("capturar_labrador"):
 		# La estatua del Labrador en su glorieta, desde el sur
@@ -12861,6 +13132,19 @@ func _capturar_si_toca() -> void:
 		_refrescar_rotulos()
 		_cam.look_at_from_position(Vector3(-420.0, _altura(-420.0, 790.0) + 55.0, 790.0), Vector3(-500.0, _altura(-500.0, 720.0), 720.0), Vector3.UP)
 		nombre = "gallarza.png"
+	elif args.has("capturar_columpio"):
+		# El jugador montado en el columpio libre de Gallarza
+		for tt in [Vector2i(3, 4), Vector2i(2, 4), Vector2i(3, 3), Vector2i(2, 3), Vector2i(4, 4), Vector2i(3, 5)]:
+			_construir_tile(tt)
+		_jugador.position = Vector3(-511.2, _altura(-511.2, 716.3) + 0.95, 716.3)
+		_alternar_columpio()
+		_columpios[1]["amp"] = 0.55
+		_columpios[1]["fase_propia"] = 1.15
+		_mover_peatones(0.05)
+		_actualizar_columpio(0.05)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(-508.0, _altura(-508.0, 720.5) + 1.8, 720.5), Vector3(-512.2, _altura(-512.2, 716.3) + 1.2, 716.3), Vector3.UP)
+		nombre = "columpio.png"
 	elif args.has("capturar_ra"):
 		for tt in [Vector2i(3, 4), Vector2i(2, 4), Vector2i(3, 5), Vector2i(2, 5), Vector2i(3, 3), Vector2i(4, 4)]:
 			_construir_tile(tt)
