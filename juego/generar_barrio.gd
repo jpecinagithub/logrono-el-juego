@@ -3594,11 +3594,16 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	# Botón azul de subir/bajar del coche
 	_btn_bajar = Button.new()
 	_btn_bajar.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_btn_bajar.offset_left = -180
+	_btn_bajar.offset_left = -320
 	_btn_bajar.offset_right = -12
 	_btn_bajar.offset_top = 348
 	_btn_bajar.offset_bottom = 408
-	_btn_bajar.add_theme_font_size_override("font_size", 25)
+	_btn_bajar.add_theme_font_size_override("font_size", 23)
+	# Que ninguna indicación se salga de la pantalla: el texto
+	# se parte en dos líneas dentro del botón si hace falta
+	# (pasaba con «Decathlon: un casco de ciclismo (35 €)»).
+	_btn_bajar.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_btn_bajar.clip_text = true
 	_btn_bajar.add_theme_color_override("font_color", Color(1, 1, 1))
 	_btn_bajar.add_theme_stylebox_override("normal", _estilo_caja(Color(0.10, 0.36, 0.85, 0.97), 16))
 	_btn_bajar.add_theme_stylebox_override("hover", _estilo_caja(Color(0.16, 0.44, 0.95, 0.97), 16))
@@ -3635,6 +3640,9 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	_banner_texto.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_banner_texto.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_banner_texto.clip_text = true
+	# Las indicaciones largas se parten en dos líneas en vez
+	# de cortarse a mitad de frase.
+	_banner_texto.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hb.add_child(_banner_texto)
 	var bx2 := Button.new()
 	bx2.text = "×"
@@ -5103,6 +5111,8 @@ func _input(event: InputEvent) -> void:
 		elif event.button_index == JOY_BUTTON_A:
 			if _dlg_abierto:
 				_dlg_confirmar()
+			elif _en_interior != "":
+				_ejecutar_accion_interior(_accion_interior_cercana())
 			elif _en_columpio or not _columpio_libre().is_empty():
 				_alternar_columpio()
 			else:
@@ -5146,25 +5156,7 @@ func _input(event: InputEvent) -> void:
 			if _dlg_abierto:
 				_dlg_confirmar()
 			elif _en_interior != "":
-				var acc_e := _accion_interior_cercana()
-				if acc_e == "dormir":
-					_dormir()
-				elif acc_e == "pelo":
-					_desde_tel_pelo()
-				elif acc_e == "ropa":
-					_desde_tel_camiseta()
-				elif acc_e == "pan":
-					_comprar_pan()
-				elif acc_e == "subir":
-					_cambiar_planta(true)
-				elif acc_e == "bajar":
-					_cambiar_planta(false)
-				elif acc_e.begins_with("comprar:"):
-					_comprar_tienda(acc_e.substr(9))
-				else:
-					var den_e: Vector3 = _interiores[_en_interior]["dentro"]
-					if Vector2(_jugador.position.x - den_e.x, _jugador.position.z - den_e.z).length() < 2.6:
-						_salir_interior()
+				_ejecutar_accion_interior(_accion_interior_cercana())
 			elif _puerta_cercana() != "":
 				_entrar_interior(_puerta_cercana())
 			elif _en_columpio or not _columpio_libre().is_empty():
@@ -6042,7 +6034,21 @@ func _actualizar_hud() -> void:
 			var acc_i := _accion_interior_cercana()
 			if acc_i != "":
 				var textos_acc := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)"}
-				_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
+				if acc_i.begins_with("comprar:"):
+					# En el botón no cabe el texto largo de la
+					# tienda: producto sin artículo y precio.
+					var tb: Dictionary = _tiendas_mall().get(acc_i.trim_prefix("comprar:"), {})
+					if not tb.is_empty():
+						var prod := String(tb["producto"])
+						for art in ["unas ", "unos ", "una ", "un "]:
+							if prod.begins_with(art):
+								prod = prod.substr(art.length())
+								break
+						_btn_bajar.text = prod.substr(0, 1).to_upper() + prod.substr(1) + " · " + str(int(tb["precio"])) + " €"
+					else:
+						_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
+				else:
+					_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
 				_btn_bajar.visible = true
 				_btn_modo = acc_i
 			else:
@@ -6733,6 +6739,32 @@ func _puerta_cercana() -> String:
 		if Vector2(_jugador.position.x - f.x, _jugador.position.z - f.z).length() < 3.2:
 			return String(id)
 	return ""
+
+func _ejecutar_accion_interior(acc: String) -> void:
+	# La acción de un interior, igual para la tecla E, el botón
+	# A del mando y el botón táctil: una sola vía, para que un
+	# camino roto no deje la tienda muda en los demás (pasó con
+	# las compras: la E cortaba «comprar:» con substr(9) y pedía
+	# «ec_casco», que no existe; el mando y el botón ni siquiera
+	# tenían rama de compra).
+	if acc == "dormir":
+		_dormir()
+	elif acc == "pelo":
+		_desde_tel_pelo()
+	elif acc == "ropa":
+		_desde_tel_camiseta()
+	elif acc == "pan":
+		_comprar_pan()
+	elif acc == "subir":
+		_cambiar_planta(true)
+	elif acc == "bajar":
+		_cambiar_planta(false)
+	elif acc.begins_with("comprar:"):
+		_comprar_tienda(acc.trim_prefix("comprar:"))
+	elif acc == "" and _en_interior != "":
+		var den_e: Vector3 = _interiores[_en_interior]["dentro"]
+		if Vector2(_jugador.position.x - den_e.x, _jugador.position.z - den_e.z).length() < 2.6:
+			_salir_interior()
 
 func _accion_interior_cercana() -> String:
 	if _en_interior == "":
@@ -7597,6 +7629,12 @@ func _t_coche() -> void:
 			_desde_tel_camiseta()
 		elif _btn_modo == "pan":
 			_comprar_pan()
+		elif _btn_modo == "subir":
+			_cambiar_planta(true)
+		elif _btn_modo == "bajar":
+			_cambiar_planta(false)
+		elif _btn_modo.begins_with("comprar:"):
+			_comprar_tienda(_btn_modo.trim_prefix("comprar:"))
 		else:
 			_alternar_coche()
 
@@ -8109,6 +8147,30 @@ func _probar_decathlon() -> void:
 	# Sin dinero, no hay compra
 	_comprar_tienda("dec_tienda")
 	pasa = pasa and _dinero == 30
+	# Comprar por los caminos de verdad: la tecla E como evento
+	# por _input, el botón táctil y el botón A del mando. Antes
+	# la E pedía «ec_casco» (substr(9) sobre «comprar:») y no
+	# pasaba nada; el botón y el mando ni tenían rama de compra.
+	_dinero = 100
+	_jugador.position = (accs["comprar:dec_casco"] as Vector3) + Vector3(0, 0.95, 0)
+	var ev := InputEventKey.new()
+	ev.keycode = KEY_E
+	ev.pressed = true
+	_input(ev)
+	pasa = pasa and _dinero == 65 and _bolsa_en_mano
+	_btn_modo = "comprar:dec_mochila"
+	_t_coche()
+	pasa = pasa and _dinero == 25
+	var evp := InputEventJoypadButton.new()
+	evp.button_index = JOY_BUTTON_A
+	evp.pressed = true
+	_jugador.position = (accs["comprar:dec_banador"] as Vector3) + Vector3(0, 0.95, 0)
+	_input(evp)
+	pasa = pasa and _dinero == 0
+	# Sin dinero para la Grajera: avisa «No te llega» y no cobra
+	_jugador.position = (accs["comprar:dec_bici"] as Vector3) + Vector3(0, 0.95, 0)
+	_input(ev)
+	pasa = pasa and _dinero == 0 and _aviso.begins_with("No te llega")
 	_salir_interior()
 	pasa = pasa and _en_interior == ""
 	print("DECATHLON_PRUEBA_OK pasa=", pasa, " acciones=", accs.size(), " dinero=", _dinero, " garaje=", _mis_coches.size())
@@ -13416,6 +13478,17 @@ func _capturar_si_toca() -> void:
 		_refrescar_rotulos()
 		_cam.look_at_from_position(Vector3(-508.0, _altura(-508.0, 720.5) + 1.8, 720.5), Vector3(-512.2, _altura(-512.2, 716.3) + 1.2, 716.3), Vector3.UP)
 		nombre = "columpio.png"
+	elif args.has("capturar_casco"):
+		# Dentro de Decathlon, junto a los cascos: el botón de
+		# acción tiene que decir «Casco de ciclismo · 35 €» y
+		# caber en la pantalla.
+		_entrar_interior("decathlon")
+		var accs_c: Dictionary = _interiores["decathlon"]["acciones"]
+		_jugador.position = (accs_c["comprar:dec_casco"] as Vector3) + Vector3(0.6, 0.95, 0.6)
+		_jugador.rotation.y = -2.2
+		_actualizar_hud()
+		_cam.look_at_from_position(_jugador.position + Vector3(2.6, 1.6, 2.6), _jugador.position + Vector3(0, 0.8, 0), Vector3.UP)
+		nombre = "casco.png"
 	elif args.has("capturar_bolsa"):
 		# E4: el jugador con el balón bajo el brazo izquierdo
 		# y la bolsa de la compra en la mano derecha, en la
