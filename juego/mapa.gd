@@ -47,10 +47,15 @@ func _draw() -> void:
 	var rio: Array = datos["rio"]
 	for i in range(rio.size() - 1):
 		draw_line(_conv(rio[i], ox, oy, escala), _conv(rio[i + 1], ox, oy, escala), Color(0.25, 0.50, 0.85), 9.0)
-	# Tu recorrido en esta sesión
+	# Tu recorrido en esta sesión. Los saltos largos (entrar en un
+	# interior, teletransporte) no se dibujan: no son recorrido.
 	var rastro: Array = datos["rastro"]
 	for i in range(rastro.size() - 1):
-		draw_line(_conv2(rastro[i], ox, oy, escala), _conv2(rastro[i + 1], ox, oy, escala), Color(0.55, 0.95, 0.65), 2.5)
+		var ra: Vector2 = rastro[i]
+		var rb: Vector2 = rastro[i + 1]
+		if ra.distance_to(rb) > 60.0:
+			continue
+		draw_line(_conv2(ra, ox, oy, escala), _conv2(rb, ox, oy, escala), Color(0.55, 0.95, 0.65), 2.5)
 	# Ruta al encargo
 	var ruta: Array = datos["ruta"]
 	for i in range(ruta.size() - 1):

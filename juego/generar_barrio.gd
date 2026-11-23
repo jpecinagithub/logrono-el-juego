@@ -44,6 +44,7 @@ const COCHES := [
 	{"n": "Portales", "clase": "Furgoneta", "vmax": 17.0, "acel": 7.5, "freno": 12.0, "giro": 1.35, "precio": 2600, "color": Color(0.92, 0.92, 0.94), "estilo": "furgo", "dims": Vector3(1.95, 0.60, 4.8)},
 	{"n": "Iregua", "clase": "Furgoneta", "vmax": 18.0, "acel": 8.0, "freno": 12.5, "giro": 1.38, "precio": 3200, "color": Color(0.70, 0.45, 0.20), "estilo": "furgo", "dims": Vector3(1.95, 0.60, 5.0)},
 	{"n": "Bici Ebro", "clase": "Bicicleta", "vmax": 8.5, "acel": 3.4, "freno": 10.0, "giro": 2.30, "precio": 150, "color": Color(0.10, 0.55, 0.50), "estilo": "bici", "dims": Vector3(0.5, 0.5, 1.8)},
+	{"n": "Grajera", "clase": "Bicicleta de montaña", "vmax": 10.5, "acel": 4.4, "freno": 11.0, "giro": 2.55, "precio": 450, "color": Color(0.85, 0.45, 0.10), "estilo": "mtb", "dims": Vector3(0.55, 0.55, 1.85)},
 ]
 var _mis_coches: Array = [{"id": 0, "danio": 0, "motor": 0, "frenos": 0}]
 var _coche_activo := 0
@@ -144,7 +145,7 @@ func _altura(x: float, z: float) -> float:
 		var t := clampf((Vector2(x, z) - a).dot(ab) / lon2, 0.0, 1.0)
 		var cerca: Vector2 = a + ab * t
 		if Vector2(x, z).distance_to(cerca) <= float(pu["ancho"]) * 0.5:
-			var ytab := lerpf(float(pu["ya"]), float(pu["yb"]), t) + sin(t * PI) * 0.5
+			var ytab := lerpf(float(pu["ya"]), float(pu["yb"]), t) + sin(t * PI) * float(pu.get("bache", 0.5))
 			if ytab > y:
 				y = ytab
 	return y
@@ -294,7 +295,9 @@ func _ready() -> void:
 	_soportales()
 	_crear_radares()
 	_crear_peatones()
+	_parque_gallarza()
 	_crear_trafico()
+	_crear_buses_urbanos()
 	_crear_sonido()
 	_crear_interfaz()
 	_crear_tactil()
@@ -3735,6 +3738,7 @@ var _placas_datos: Array = []
 # Bloque 7: marquesinas de parada y contenedores colocados
 var _b7_paradas := 0
 var _b7_contenedores := 0
+var _paradas_red: Array = []
 var _t_calle := 0.0
 # Fase 3: dinero, encargos, mapa
 var _dinero := 60
@@ -3824,6 +3828,9 @@ var _rastro: Array = []
 var _peatones: Array = []
 var _estaticos: Array = []
 var _perros: Array = []
+var _columpios: Array = []
+var _balon_gal: Dictionary = {}
+var _gallarza_verde := 0
 var _pajaros: Array = []
 var _palomas: Array = []
 var _anciano_pos := Vector3.ZERO
@@ -3861,6 +3868,7 @@ var _joy_id := -1
 var _joy_centro := Vector2.ZERO
 var _joy_valor := Vector2.ZERO
 var _trafico: Array = []
+var _buses_urbanos: Array = []
 var _pois_minimapa: Array = []
 var _asientos: Array = []
 var _sentado := false
@@ -4243,9 +4251,76 @@ func _modelo_bici(color: Color) -> Node3D:
 	bici.add_child(sil)
 	return bici
 
+func _modelo_mtb(color: Color) -> Node3D:
+	# La de montaña: ruedas anchas de tacos, cuadro grueso con tubo
+	# superior inclinado, horquilla de suspensión y manillar recto.
+	var bici := Node3D.new()
+	var mat_c := StandardMaterial3D.new()
+	mat_c.albedo_color = color
+	var mat_n := StandardMaterial3D.new()
+	mat_n.albedo_color = Color(0.08, 0.08, 0.09)
+	var mat_g := StandardMaterial3D.new()
+	mat_g.albedo_color = Color(0.45, 0.46, 0.50)
+	for sz in [-0.57, 0.57]:
+		var rueda := MeshInstance3D.new()
+		var cil := CylinderMesh.new()
+		cil.top_radius = 0.36
+		cil.bottom_radius = 0.36
+		cil.height = 0.10
+		rueda.mesh = cil
+		cil.material = mat_n
+		rueda.rotation_degrees = Vector3(0, 0, 90)
+		rueda.position = Vector3(0, 0.36, sz)
+		bici.add_child(rueda)
+		var buje := MeshInstance3D.new()
+		var bj := CylinderMesh.new()
+		bj.top_radius = 0.06
+		bj.bottom_radius = 0.06
+		bj.height = 0.13
+		buje.mesh = bj
+		bj.material = mat_g
+		buje.rotation_degrees = Vector3(0, 0, 90)
+		buje.position = Vector3(0, 0.36, sz)
+		bici.add_child(buje)
+	var tubos := [
+		[Vector3(0, 0.66, 0.02), Vector3(0.07, 0.07, 0.74), 0.16],
+		[Vector3(0, 0.50, 0.20), Vector3(0.07, 0.07, 0.68), 0.72],
+		[Vector3(0, 0.55, -0.30), Vector3(0.07, 0.58, 0.07), -0.30],
+		[Vector3(0, 0.52, 0.48), Vector3(0.06, 0.62, 0.06), -0.28],
+		[Vector3(0, 0.40, -0.44), Vector3(0.05, 0.05, 0.44), 0.45],
+		[Vector3(-0.06, 0.52, 0.52), Vector3(0.05, 0.66, 0.05), -0.28],
+		[Vector3(0.06, 0.52, 0.52), Vector3(0.05, 0.66, 0.05), -0.28],
+	]
+	for t in tubos:
+		var tubo := MeshInstance3D.new()
+		var tj := BoxMesh.new()
+		tj.size = t[1]
+		tubo.mesh = tj
+		tubo.position = t[0]
+		tubo.rotation.x = t[2]
+		tj.material = mat_c
+		bici.add_child(tubo)
+	var man := MeshInstance3D.new()
+	var mj := BoxMesh.new()
+	mj.size = Vector3(0.58, 0.05, 0.05)
+	man.mesh = mj
+	man.position = Vector3(0, 0.90, 0.55)
+	mj.material = mat_n
+	bici.add_child(man)
+	var sil := MeshInstance3D.new()
+	var sj := BoxMesh.new()
+	sj.size = Vector3(0.19, 0.06, 0.30)
+	sil.mesh = sj
+	sil.position = Vector3(0, 0.86, -0.33)
+	sj.material = mat_n
+	bici.add_child(sil)
+	return bici
+
 func _modelo_coche(color: Color, estilo := "normal", dims := Vector3(1.8, 0.55, 4.2)) -> Node3D:
 	if estilo == "bici":
 		return _modelo_bici(color)
+	if estilo == "mtb":
+		return _modelo_mtb(color)
 	var coche := Node3D.new()
 	var mat_c := StandardMaterial3D.new()
 	mat_c.albedo_color = color
@@ -4368,7 +4443,29 @@ func _modelo_coche(color: Color, estilo := "normal", dims := Vector3(1.8, 0.55, 
 func _es_bici() -> bool:
 	var inst: Dictionary = _mis_coches[_coche_activo]
 	var cat: Dictionary = COCHES[int(inst["id"])]
-	return String(cat["estilo"]) == "bici"
+	return String(cat["estilo"]) in ["bici", "mtb"]
+
+func _probar_gallarza() -> void:
+	var pasa := true
+	pasa = pasa and _gallarza_verde > 300
+	pasa = pasa and _columpios.size() == 2
+	pasa = pasa and not _balon_gal.is_empty()
+	var en_parque := 0
+	for est in _estaticos:
+		var rz: Node3D = est["raiz"]
+		if rz.position.x > -546.0 and rz.position.x < -426.0 and rz.position.z > 678.0 and rz.position.z < 794.0:
+			en_parque += 1
+	pasa = pasa and en_parque >= 7
+	# El balón se mueve: dos muestras separadas en el tiempo difieren
+	var p0: Vector3 = (_balon_gal["nodo"] as Node3D).position
+	_mover_peatones(0.6)
+	var p1: Vector3 = (_balon_gal["nodo"] as Node3D).position
+	pasa = pasa and p0.distance_to(p1) > 0.5
+	# El columpio ocupado se balancea
+	_mover_peatones(0.4)
+	var piv0: Node3D = _columpios[0]["pivote"]
+	pasa = pasa and absf(piv0.rotation.x) > 0.02
+	print("GALLARZA_PRUEBA_OK pasa=", pasa, " verde=", _gallarza_verde, " en_parque=", en_parque)
 
 func _probar_bici() -> void:
 	var pasa := true
@@ -4398,6 +4495,17 @@ func _probar_bici() -> void:
 	ev2.pressed = false
 	Input.parse_input_event(ev2)
 	pasa = pasa and _pill_vel != null and _pill_vel.visible and _hud_vel.text.contains("km/h")
+	# La de montaña: se compra, cuenta como bici (pedaleando, sin
+	# motor) y corre más que la de paseo.
+	_dinero = 1000
+	var n1 := _mis_coches.size()
+	pasa = pasa and _comprar_coche(13)
+	pasa = pasa and _mis_coches.size() == n1 + 1
+	_usar_coche(n1)
+	pasa = pasa and _es_bici()
+	var st2 := _stats_activo()
+	pasa = pasa and float(st2["vmax"]) > 10.0
+	pasa = pasa and _coche != null and _coche.get_child_count() > 5
 	print("BICI_PRUEBA_OK pasa=", pasa, " vel=", _coche_vel, " hud=", _hud_vel.text if _hud_vel != null else "?")
 	get_tree().quit()
 
@@ -4848,16 +4956,19 @@ func _physics_process(delta: float) -> void:
 				_nadando = true
 	_comprobar_salida_interior()
 	_actualizar_tenderos(delta)
-	# Rastro del recorrido (para el mapa) y peatones
+	# Rastro del recorrido (para el mapa) y peatones. Dentro de un
+	# interior no se anota: las salas viven lejos de la ciudad y el
+	# mapa dibujaba una recta imposible hasta ellas.
 	var pos_r := _bus.position if _en_bus else (_coche.position if (_en_coche or (_auto and _fase_auto == 1)) else _jugador.position)
 	var p2 := Vector2(pos_r.x, pos_r.z)
-	if _rastro.is_empty() or p2.distance_to(_rastro[_rastro.size() - 1]) > 8.0:
+	if _en_interior == "" and (_rastro.is_empty() or p2.distance_to(_rastro[_rastro.size() - 1]) > 8.0):
 		_rastro.append(p2)
 		if _rastro.size() > 500:
 			_rastro.remove_at(0)
 	_mover_peatones(delta)
 	_mover_palomas(delta)
 	_mover_trafico(delta)
+	_mover_buses(delta)
 	_actualizar_especiales(delta)
 	_actualizar_encuentros(delta)
 	_mover_encuentro(delta)
@@ -4928,7 +5039,7 @@ func _physics_process(delta: float) -> void:
 			if _en_interior != "" and not _dlg_abierto and _tiempo > _aviso_hasta:
 				var acc_h := _accion_interior_cercana()
 				if acc_h != "":
-					var textos_h := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)"}
+					var textos_h := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)"}
 					_aviso = "Pulsa E · " + String(textos_h.get(acc_h, acc_h))
 					_aviso_hasta = _tiempo + 2.0
 			if not _en_coche and not _sentado and _tiempo > _aviso_banco_cd and not _banco_cercano().is_empty():
@@ -5424,7 +5535,7 @@ func _actualizar_hud() -> void:
 		elif _en_interior != "":
 			var acc_i := _accion_interior_cercana()
 			if acc_i != "":
-				var textos_acc := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)"}
+				var textos_acc := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)"}
 				_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
 				_btn_bajar.visible = true
 				_btn_modo = acc_i
@@ -5554,6 +5665,7 @@ func _crear_interiores() -> void:
 		["peluqueria", "Peluquería", Vector3(-160, 0, 90), Color(0.95, 0.55, 0.75), Vector2(12, 10), Color(0.70, 0.68, 0.72), Color(0.90, 0.85, 0.88)],
 		["tienda", "Tienda de ropa", Vector3(-60, 0, 300), Color(0.65, 0.85, 0.45), Vector2(14, 11), Color(0.60, 0.52, 0.42), Color(0.88, 0.86, 0.80)],
 		["panaderia", "Panadería", Vector3(-190, 0, 130), Color(0.95, 0.70, 0.40), Vector2(12, 10), Color(0.72, 0.62, 0.48), Color(0.92, 0.86, 0.76)],
+		["decathlon", "Decathlon", Vector3(-2487, 0, 1564), Color(0.10, 0.30, 0.75), Vector2(26, 18), Color(0.62, 0.64, 0.68), Color(0.85, 0.88, 0.92)],
 	]
 	for i in defs.size():
 		var d: Array = defs[i]
@@ -5640,6 +5752,64 @@ func _crear_interiores() -> void:
 				_mueble(v, n, c, centro, Vector3(-4.9, 0.75, -4.2), Vector3(1.6, 1.5, 0.9), Color(0.30, 0.28, 0.30))
 				_mueble(v, n, c, centro, Vector3(5.55, 0.8, -0.8), Vector3(0.5, 1.6, 2.4), Color(0.55, 0.42, 0.28))
 				acciones["pan"] = centro + Vector3(0, 0, -1.4)
+			"decathlon":
+				# La nave de Decathlon (pedido de Jon): pasillos de
+				# góndolas por secciones, las bicis en exposición,
+				# balones, la tienda de campaña montada y caja. Cada
+				# producto tiene su punto de compra: al acercarte se
+				# ve el precio y con E lo compras.
+				var col_gond := Color(0.25, 0.30, 0.45)
+				var secciones := [
+					[Vector2(-5.5, -2.8), Color(0.20, 0.55, 0.30)],
+					[Vector2(5.5, -2.8), Color(0.90, 0.50, 0.15)],
+					[Vector2(-5.5, 3.0), Color(0.80, 0.25, 0.20)],
+					[Vector2(5.5, 3.0), Color(0.15, 0.45, 0.70)],
+				]
+				for sec in secciones:
+					var gp: Vector2 = sec[0]
+					var col_s: Color = sec[1]
+					_mueble(v, n, c, centro, Vector3(gp.x, 0.52, gp.y), Vector3(5.6, 1.05, 0.9), col_gond)
+					_mueble(v, n, c, centro, Vector3(gp.x, 1.85, gp.y), Vector3(5.6, 0.35, 0.95), col_s, false)
+					for dpx in [-2.25, -1.35, -0.45, 0.45, 1.35, 2.25]:
+						_mueble(v, n, c, centro, Vector3(gp.x + dpx, 1.32, gp.y), Vector3(0.6, 0.5, 0.62), col_s.lightened(0.25 + 0.1 * (int(dpx * 10) % 3)), false)
+				# Bicis en exposición contra la pared oeste
+				var cols_bici := [Color(0.85, 0.45, 0.10), Color(0.10, 0.55, 0.50), Color(0.80, 0.20, 0.18)]
+				for bi in 3:
+					var bici_d := _modelo_mtb(cols_bici[bi]) if bi == 0 else _modelo_bici(cols_bici[bi])
+					bici_d.position = centro + Vector3(-11.3, 0, -5.6 + bi * 2.1)
+					bici_d.rotation.y = 0.22
+					add_child(bici_d)
+				_registrar_rect(centro, Vector2(-11.3, -3.5), Vector2(1.1, 6.4))
+				# Cascos en su expositor
+				_mueble(v, n, c, centro, Vector3(-11.3, 0.45, -7.9), Vector3(1.7, 0.9, 0.5), col_gond)
+				for dpx2 in [-0.55, 0.0, 0.55]:
+					_bola_en(v, n, c, centro + Vector3(-11.3 + dpx2, 1.08, -7.9), 0.17, cols_bici[int(abs(dpx2 * 10)) % 3], dpx2 * 7.0, 0.9)
+				# Balones en su cesta
+				_mueble(v, n, c, centro, Vector3(-5.5, 0.30, 4.75), Vector3(1.9, 0.6, 0.7), Color(0.35, 0.36, 0.40))
+				_bola_en(v, n, c, centro + Vector3(-6.1, 0.78, 4.75), 0.19, Color(0.93, 0.93, 0.93), 3.1)
+				_bola_en(v, n, c, centro + Vector3(-5.5, 0.78, 4.75), 0.19, Color(0.90, 0.50, 0.15), 5.7)
+				_bola_en(v, n, c, centro + Vector3(-4.9, 0.78, 4.75), 0.19, Color(0.90, 0.80, 0.20), 8.3)
+				# La tienda de campaña, montada en su rincón
+				_mueble(v, n, c, centro, Vector3(10.8, 0.03, 6.2), Vector3(2.6, 0.06, 2.2), Color(0.30, 0.32, 0.36), false)
+				for lado_t in [-1.0, 1.0]:
+					var panel := _pieza(Vector3(2.4, 0.06, 2.0), Vector3.ZERO, Color(0.20, 0.50, 0.30))
+					panel.position = centro + Vector3(10.8 + lado_t * 0.52, 0.62, 6.2)
+					panel.rotation.z = lado_t * 0.68
+					add_child(panel)
+				_registrar_rect(centro, Vector2(10.8, 6.2), Vector2(2.4, 2.1))
+				# Caja y mostrador junto a la puerta
+				_mueble(v, n, c, centro, Vector3(0, 0.5, 6.6), Vector3(3.6, 1.0, 0.8), Color(0.15, 0.25, 0.50))
+				_mueble(v, n, c, centro, Vector3(0, 1.04, 6.6), Vector3(3.8, 0.07, 0.95), Color(0.85, 0.86, 0.88), false)
+				acciones["comprar:dec_bici"] = centro + Vector3(-9.7, 0, -3.5)
+				acciones["comprar:dec_casco"] = centro + Vector3(-10.0, 0, -7.6)
+				acciones["comprar:dec_mochila"] = centro + Vector3(-6.9, 0, -1.5)
+				acciones["comprar:dec_chaqueta"] = centro + Vector3(-4.1, 0, -1.5)
+				acciones["comprar:dec_mancuernas"] = centro + Vector3(4.1, 0, -1.5)
+				acciones["comprar:dec_zapatillas"] = centro + Vector3(6.9, 0, -1.5)
+				acciones["comprar:dec_balon"] = centro + Vector3(-6.9, 0, 4.35)
+				acciones["comprar:dec_raqueta"] = centro + Vector3(-4.1, 0, 4.35)
+				acciones["comprar:dec_banador"] = centro + Vector3(6.9, 0, 4.35)
+				acciones["comprar:dec_tienda"] = centro + Vector3(9.1, 0, 4.9)
 		var nodo_s := Node3D.new()
 		nodo_s.add_child(_malla_de(v, n, c, Color.WHITE))
 		add_child(nodo_s)
@@ -5674,7 +5844,8 @@ func _crear_interiores() -> void:
 	var tenderos_def := {
 		"panaderia": [Vector3(0, 0, -3.7), Color(0.93, 0.91, 0.87), Color(0.30, 0.28, 0.30), Color(0.35, 0.22, 0.12), true],
 		"peluqueria": [Vector3(-3.6, 0, -2.2), Color(0.25, 0.45, 0.55), Color(0.25, 0.25, 0.30), Color(0.15, 0.12, 0.10), false],
-		"tienda": [Vector3(1.9, 0, -2.9), Color(0.80, 0.45, 0.60), Color(0.25, 0.25, 0.30), Color(0.75, 0.55, 0.25), true]}
+		"tienda": [Vector3(1.9, 0, -2.9), Color(0.80, 0.45, 0.60), Color(0.25, 0.25, 0.30), Color(0.75, 0.55, 0.25), true],
+		"decathlon": [Vector3(2.3, 0, 7.1), Color(0.15, 0.35, 0.75), Color(0.22, 0.22, 0.26), Color(0.25, 0.17, 0.12), false]}
 	for id_t in tenderos_def:
 		var td: Array = tenderos_def[id_t]
 		var per_t := _hacer_persona(td[1], td[2], td[3], false, bool(td[4]))
@@ -5699,6 +5870,16 @@ func _tiendas_mall() -> Dictionary:
 		"yelmo": {"nombre": "Yelmo Cines", "producto": "una entrada de cine", "precio": 9, "color": Color(0.15, 0.15, 0.45), "cine": true},
 		"alehop": {"nombre": "ALE-HOP", "producto": "un regalo", "precio": 8, "color": Color(0.95, 0.55, 0.10)},
 		"fosters": {"nombre": "Foster's Hollywood", "producto": "una cena", "precio": 14, "color": Color(0.60, 0.15, 0.15)},
+		"dec_bici": {"nombre": "Decathlon", "producto": "la bicicleta de montaña Grajera", "precio": 450, "color": Color(0.10, 0.30, 0.75)},
+		"dec_casco": {"nombre": "Decathlon", "producto": "un casco de ciclismo", "precio": 35, "color": Color(0.10, 0.30, 0.75)},
+		"dec_mochila": {"nombre": "Decathlon", "producto": "una mochila de montaña de 30 L", "precio": 40, "color": Color(0.10, 0.30, 0.75)},
+		"dec_chaqueta": {"nombre": "Decathlon", "producto": "una chaqueta impermeable", "precio": 80, "color": Color(0.10, 0.30, 0.75)},
+		"dec_mancuernas": {"nombre": "Decathlon", "producto": "un juego de mancuernas", "precio": 30, "color": Color(0.10, 0.30, 0.75)},
+		"dec_zapatillas": {"nombre": "Decathlon", "producto": "unas zapatillas de trail", "precio": 65, "color": Color(0.10, 0.30, 0.75)},
+		"dec_balon": {"nombre": "Decathlon", "producto": "un balón de fútbol", "precio": 20, "color": Color(0.10, 0.30, 0.75)},
+		"dec_raqueta": {"nombre": "Decathlon", "producto": "una raqueta de pádel", "precio": 55, "color": Color(0.10, 0.30, 0.75)},
+		"dec_banador": {"nombre": "Decathlon", "producto": "un bañador y unas gafas de natación", "precio": 25, "color": Color(0.10, 0.30, 0.75)},
+		"dec_tienda": {"nombre": "Decathlon", "producto": "una tienda de campaña", "precio": 120, "color": Color(0.10, 0.30, 0.75)},
 	}
 
 func _comprar_tienda(clave: String) -> void:
@@ -5711,6 +5892,16 @@ func _comprar_tienda(clave: String) -> void:
 		_aviso_set("No te llega: %s cuesta %d €" % [String(t["producto"]), precio], 3.5)
 		return
 	_dinero -= precio
+	if clave == "dec_bici":
+		# La Grajera comprada en Decathlon entra en el garaje de
+		# verdad, como la del concesionario.
+		_mis_coches.append({"id": 13, "danio": 0, "motor": 0, "frenos": 0})
+		_aviso_set("Has comprado la bicicleta de montaña Grajera: ya está en tu garaje", 4.0)
+		_sonar("cobro")
+		_actualizar_hud_dinero()
+		_guardar()
+		print("MALL_COMPRA_OK ", clave, " dinero=", _dinero, " garaje=", _mis_coches.size())
+		return
 	if bool(t.get("cine", false)):
 		_minutos += 110.0
 		if _minutos >= 1440.0:
@@ -5985,6 +6176,7 @@ func _crear_bloque7() -> void:
 				_caja_en(verts, normals, cols, cen + lat * 1.7 + Vector3(0, 2.45, 0), Vector3(0.06, 0.55, 0.75), col_cartel, rot)
 				_registrar_solido(x, z, rot, 0.65, 1.4)
 				rotulos_paradas.append({"n": String(pa["n"]), "h": h, "w": 3.0, "g": 0.5, "p": Vector3(x, y + 2.95, z)})
+				_paradas_red.append({"x": x, "z": z, "hx": h.x, "hz": h.y})
 				_b7_paradas += 1
 	if not rotulos_paradas.is_empty():
 		_rotulos_datos["paradas"] = rotulos_paradas
@@ -6123,6 +6315,10 @@ func _tendero_ofrecer(id: String) -> void:
 			_abrir_dialogo_opciones("La dependienta", "¡Hola! Si buscas camiseta, hoy han entrado colores nuevos. ¿Quieres verlas?", [
 				{"t": "A ver las camisetas", "f": Callable(self, "_desde_tel_camiseta")},
 				{"t": "Solo miro, gracias", "f": Callable(self, "_tendero_nada")}])
+		"decathlon":
+			_abrir_dialogo_opciones("El dependiente", "¡Hola! Bienvenido a Decathlon. Si buscas bici de montaña, la Grajera es la de la casa: 450 € y te queda en el garaje.", [
+				{"t": "Me llevo la Grajera (450 €)", "f": func() -> void: _comprar_tienda("dec_bici")},
+				{"t": "Solo estoy mirando", "f": Callable(self, "_tendero_nada")}])
 
 func _tendero_pan() -> void:
 	if _dinero < 2:
@@ -7086,17 +7282,25 @@ func _modelo_coche_fundido(color: Color, estilo := "normal", dims := Vector3(1.8
 	return _malla_de(verts, normals, cols, Color.WHITE)
 
 func _crear_trafico() -> void:
-	for k in 10:
+	# Solo coches: el catálogo también trae las bicis, y el tráfico
+	# dibujaba una bici como un cochecito en miniatura.
+	var pool: Array = []
+	for cat_p in COCHES:
+		if not (String(cat_p["estilo"]) in ["bici", "mtb"]):
+			pool.append(cat_p)
+	for k in 22:
+		var lim_tx := 620.0 if k % 2 == 0 else 1250.0
+		var lim_tz := 460.0 if k % 2 == 0 else 950.0
 		var nodo := -1
 		for intento in 60:
 			var cand := _rng.randi() % _nodos.size()
 			var np: Vector2 = _nodos[cand]
-			if absf(np.x) <= 620.0 and absf(np.y) <= 460.0 and _ady.has(cand) and not (_ady[cand] as Array).is_empty():
+			if absf(np.x) <= lim_tx and absf(np.y) <= lim_tz and _ady.has(cand) and not (_ady[cand] as Array).is_empty():
 				nodo = cand
 				break
 		if nodo < 0:
 			continue
-		var cat_t: Dictionary = COCHES[_rng.randi() % COCHES.size()]
+		var cat_t: Dictionary = pool[_rng.randi() % pool.size()]
 		var coche := _modelo_coche_fundido(cat_t["color"], String(cat_t["estilo"]), cat_t["dims"])
 		var np2: Vector2 = _nodos[nodo]
 		coche.position = Vector3(np2.x, _altura(np2.x, np2.y), np2.y)
@@ -7163,6 +7367,185 @@ func _mover_trafico(delta: float) -> void:
 		coche.position.z += dir.y * va * delta
 		coche.position.y = _altura(coche.position.x, coche.position.z)
 		coche.rotation.y = atan2(dir.x, dir.y)
+
+# ---------- Autobuses urbanos: la flota que recorre la ciudad ----------
+
+func _modelo_bus_fundido() -> MeshInstance3D:
+	# El autobús urbano como UNA malla fundida (blanco con banda
+	# verde, como los de Logroño): 25 sueltos no pueden ser 25×15
+	# piezas en la web.
+	var blanco := Color(0.92, 0.93, 0.94)
+	var verde := Color(0.15, 0.55, 0.30)
+	var oscuro := Color(0.16, 0.18, 0.22)
+	var cristal := Color(0.35, 0.55, 0.70)
+	var partes: Array = [
+		[Vector3(0, 1.45, 0), Vector3(2.5, 1.9, 11.0), blanco],
+		[Vector3(0, 1.98, 0), Vector3(2.54, 0.70, 10.2), cristal],
+		[Vector3(0, 0.62, 0), Vector3(2.54, 0.42, 11.0), verde],
+		[Vector3(0, 2.46, 0), Vector3(2.4, 0.12, 10.6), blanco],
+		[Vector3(1.26, 1.30, 3.6), Vector3(0.06, 1.80, 1.15), oscuro],
+		[Vector3(0, 2.18, 5.52), Vector3(1.6, 0.45, 0.08), oscuro],
+		[Vector3(-0.8, 0.95, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
+		[Vector3(0.8, 0.95, 5.52), Vector3(0.40, 0.25, 0.08), Color(1.0, 0.96, 0.78)],
+		[Vector3(-0.8, 0.95, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
+		[Vector3(0.8, 0.95, -5.52), Vector3(0.40, 0.22, 0.08), Color(0.80, 0.15, 0.12)],
+	]
+	for sx in [-1.18, 1.18]:
+		for sz in [-3.6, 3.6]:
+			partes.append([Vector3(sx, 0.5, sz), Vector3(0.30, 1.0, 1.0), oscuro])
+	return _fundida(partes)
+
+func _crear_buses_urbanos() -> void:
+	# 25 autobuses urbanos (pedido de Jon) recorriendo la ciudad por
+	# el grafo de calles, parando en las paradas de la red.
+	for k in 25:
+		var nodo := -1
+		for intento in 80:
+			var cand := _rng.randi() % _nodos.size()
+			var np: Vector2 = _nodos[cand]
+			if absf(np.x) <= 1500.0 and absf(np.y) <= 1150.0 and _ady.has(cand) and not (_ady[cand] as Array).is_empty():
+				nodo = cand
+				break
+		if nodo < 0:
+			continue
+		var bus := Node3D.new()
+		bus.add_child(_modelo_bus_fundido())
+		var np2: Vector2 = _nodos[nodo]
+		bus.position = Vector3(np2.x, _altura(np2.x, np2.y), np2.y)
+		add_child(bus)
+		var vecinos: Array = _ady[nodo]
+		var sig: int = vecinos[_rng.randi() % vecinos.size()][0]
+		_buses_urbanos.append({"nodo3d": bus, "destino": sig, "previo": nodo, "vel": 6.0 + _rng.randf() * 1.5, "vel_act": 0.0, "parada_t": 0.0, "espera": _rng.randf() * 20.0})
+	print("BUSES_OK n=", _buses_urbanos.size())
+
+func _mover_buses(delta: float) -> void:
+	for bu in _buses_urbanos:
+		var bus: Node3D = bu["nodo3d"]
+		bu["espera"] = float(bu["espera"]) - delta
+		if float(bu["parada_t"]) > 0.0:
+			bu["parada_t"] = float(bu["parada_t"]) - delta
+			bu["vel_act"] = move_toward(float(bu["vel_act"]), 0.0, 8.0 * delta)
+			continue
+		var dp: Vector2 = _nodos[int(bu["destino"])]
+		var hacia := Vector2(dp.x - bus.position.x, dp.y - bus.position.z)
+		if hacia.length() < 3.5:
+			var actual: int = bu["destino"]
+			var vecinos: Array = _ady.get(actual, [])
+			if vecinos.is_empty():
+				continue
+			var opciones := []
+			for v in vecinos:
+				if int(v[0]) != int(bu["previo"]):
+					opciones.append(int(v[0]))
+			if opciones.is_empty():
+				opciones = [int(vecinos[0][0])]
+			bu["previo"] = actual
+			bu["destino"] = opciones[_rng.randi() % opciones.size()]
+			continue
+		var dir := hacia / hacia.length()
+		var derecha := Vector2(-dir.y, dir.x)
+		var obj := dp + derecha * 1.7
+		var hacia_obj := Vector2(obj.x - bus.position.x, obj.y - bus.position.z)
+		if hacia_obj.length() > 0.1:
+			dir = hacia_obj / hacia_obj.length()
+		var vel_obj := float(bu["vel"])
+		var to_j := Vector2(_jugador.position.x - bus.position.x, _jugador.position.z - bus.position.z)
+		if to_j.length() < 9.0 and to_j.length() > 0.01 and dir.dot(to_j / to_j.length()) > 0.5:
+			vel_obj = 0.0
+		if vel_obj > 0.0 and _en_coche:
+			var to_c := Vector2(_coche.position.x - bus.position.x, _coche.position.z - bus.position.z)
+			if to_c.length() < 10.0 and to_c.length() > 0.01 and dir.dot(to_c / to_c.length()) > 0.5:
+				vel_obj = 0.0
+		# Parada en las paradas de la red: si hay una cerca y toca,
+		# se detiene unos segundos como un urbano de verdad.
+		if vel_obj > 0.0 and float(bu["espera"]) <= 0.0:
+			var frente := Vector2(bus.position.x, bus.position.z) + dir * 5.0
+			for par in _paradas_red:
+				var pp := Vector2(float(par["x"]), float(par["z"]))
+				if frente.distance_to(pp) < 4.5:
+					bu["parada_t"] = 3.5
+					bu["espera"] = 25.0
+					vel_obj = 0.0
+					break
+		var va := float(bu["vel_act"])
+		va = move_toward(va, vel_obj, (9.0 if vel_obj < va else 4.0) * delta)
+		bu["vel_act"] = va
+		bus.position.x += dir.x * va * delta
+		bus.position.z += dir.y * va * delta
+		bus.position.y = _altura(bus.position.x, bus.position.z)
+		bus.rotation.y = atan2(dir.x, dir.y)
+
+func _probar_decathlon() -> void:
+	var pasa := true
+	pasa = pasa and _interiores.has("decathlon")
+	_entrar_interior("decathlon")
+	pasa = pasa and _en_interior == "decathlon"
+	var accs: Dictionary = _interiores["decathlon"]["acciones"]
+	pasa = pasa and accs.size() == 10
+	# Junto a las bicis, la acción cercana es comprar la Grajera
+	_jugador.position = (accs["comprar:dec_bici"] as Vector3) + Vector3(0, 0.95, 0)
+	pasa = pasa and _accion_interior_cercana() == "comprar:dec_bici"
+	# Comprar el balón descuenta 20 €; la bici entra en el garaje
+	_dinero = 500
+	_comprar_tienda("dec_balon")
+	pasa = pasa and _dinero == 480
+	var g0 := _mis_coches.size()
+	_comprar_tienda("dec_bici")
+	pasa = pasa and _dinero == 30
+	pasa = pasa and _mis_coches.size() == g0 + 1 and int(_mis_coches[_mis_coches.size() - 1]["id"]) == 13
+	# Sin dinero, no hay compra
+	_comprar_tienda("dec_tienda")
+	pasa = pasa and _dinero == 30
+	_salir_interior()
+	pasa = pasa and _en_interior == ""
+	print("DECATHLON_PRUEBA_OK pasa=", pasa, " acciones=", accs.size(), " dinero=", _dinero, " garaje=", _mis_coches.size())
+
+func _probar_ra() -> void:
+	var pasa := true
+	var n_ra := 0
+	for pu in _puentes:
+		if String(pu.get("n", "")) == "República Argentina (ferrocarril)":
+			n_ra += 1
+	pasa = pasa and n_ra >= 8
+	# Sobre las vías, las DOS calzadas van altas…
+	var h1 := _altura(-649.4, 1074.9) - _altura_terreno(-649.4, 1074.9)
+	var h2 := _altura(-657.3, 1077.8) - _altura_terreno(-657.3, 1077.8)
+	pasa = pasa and h1 > 3.6 and h2 > 3.4
+	# …y a ~100 m la avenida ya rueda a ras de suelo
+	var h3 := _altura(-680.6, 1176.6) - _altura_terreno(-680.6, 1176.6)
+	var h4 := _altura(-622.0, 972.6) - _altura_terreno(-622.0, 972.6)
+	pasa = pasa and h3 < 0.7 and h4 < 0.7
+	print("RA_PRUEBA_OK pasa=", pasa, " tramos=", n_ra, " h_cruce=", snappedf(h1, 0.1), "/", snappedf(h2, 0.1), " h_extremos=", snappedf(h3, 0.1), "/", snappedf(h4, 0.1))
+
+func _probar_buses() -> void:
+	var pasa := true
+	pasa = pasa and _buses_urbanos.size() == 25
+	pasa = pasa and _peatones.size() >= 70
+	var antes: Array = []
+	for bu in _buses_urbanos:
+		antes.append((bu["nodo3d"] as Node3D).position)
+	for paso in 40:
+		_mover_buses(0.5)
+	var movido := 0.0
+	for i in _buses_urbanos.size():
+		movido += (_buses_urbanos[i]["nodo3d"] as Node3D).position.distance_to(antes[i])
+	pasa = pasa and movido > 60.0
+	# Un bus junto a una parada con la espera agotada se detiene
+	if not _paradas_red.is_empty():
+		var bu0: Dictionary = _buses_urbanos[0]
+		var par0: Dictionary = _paradas_red[0]
+		var bus0: Node3D = bu0["nodo3d"]
+		var dest0: Vector2 = _nodos[int(bu0["destino"])]
+		var dir0 := (dest0 - Vector2(bus0.position.x, bus0.position.z)).normalized()
+		var pp0 := Vector2(float(par0["x"]), float(par0["z"])) - dir0 * 2.0
+		bus0.position = Vector3(pp0.x, _altura(pp0.x, pp0.y), pp0.y)
+		bu0["espera"] = 0.0
+		bu0["parada_t"] = 0.0
+		bu0["vel_act"] = 5.0
+		for paso2 in 12:
+			_mover_buses(0.4)
+		pasa = pasa and float(bu0["parada_t"]) > 0.0
+	print("BUSES_PRUEBA_OK pasa=", pasa, " peatones=", _peatones.size(), " trafico=", _trafico.size(), " movido=", snappedf(movido, 0.1))
 
 # ---------- Fase 7: radares de velocidad ----------
 
@@ -9794,21 +10177,25 @@ func _mover_palomas(delta: float) -> void:
 func _crear_peatones() -> void:
 	var camisas := [Color(0.75, 0.30, 0.25), Color(0.20, 0.55, 0.35), Color(0.85, 0.65, 0.20), Color(0.50, 0.30, 0.60), Color(0.90, 0.90, 0.88), Color(0.25, 0.25, 0.28), Color(0.80, 0.45, 0.60), Color(0.30, 0.50, 0.75)]
 	var pelos := [Color(0.25, 0.17, 0.12), Color(0.10, 0.08, 0.06), Color(0.55, 0.40, 0.25), Color(0.75, 0.72, 0.68)]
-	# Más gente en la calle (Jon: «no quiero una ciudad desierta»):
-	# 34 paseantes, con el grueso en el centro vivo (Espolón, Portales,
-	# Gran Vía) y el resto repartido por el casco.
-	for k in 34:
+	# Más gente en la calle (Jon: «no quiero una ciudad desierta» y
+	# luego «quiero mucha más gente»): 78 paseantes, con el grueso en
+	# el centro vivo (Espolón, Portales, Gran Vía), una capa por los
+	# barrios y el resto repartido por el casco.
+	for k in 78:
 		var lim_x := 650.0
 		var lim_z := 480.0
 		if k % 5 < 3:
 			lim_x = 430.0
 			lim_z = 340.0
+		elif k % 5 == 4:
+			lim_x = 1150.0
+			lim_z = 880.0
 		var nodo := -1
 		for intento in 60:
 			var cand := _rng.randi() % _nodos.size()
 			var np: Vector2 = _nodos[cand]
 			var vale := absf(np.x) <= lim_x and absf(np.y) <= lim_z and _ady.has(cand) and not (_ady[cand] as Array).is_empty()
-			if k >= 28:
+			if k >= 68:
 				vale = vale and _es_pinchos(np)
 			if vale:
 				nodo = cand
@@ -9827,6 +10214,149 @@ func _crear_peatones() -> void:
 	_crear_vida_calle(camisas, pelos)
 	_crear_escena_palomas()
 	print("PEATONES_OK n=", _peatones.size() + _estaticos.size(), " comportamientos=", _estaticos.size(), " perros=", _perros.size(), " pajaros=", _pajaros.size())
+
+func _persona_gal(base: Vector3, desf: Vector2, camisa: Color, pelo: Color, fem: bool, escala: float) -> Dictionary:
+	var per := _hacer_persona(camisa, Color(0.22, 0.23, 0.28), pelo, false, fem)
+	var rz: Node3D = per["raiz"]
+	var sitio := _punto_libre(base + Vector3(desf.x, 0, desf.y), 0.4)
+	rz.scale = Vector3.ONE * escala
+	rz.position = Vector3(sitio.x, _altura(sitio.x, sitio.z) + 0.95 * escala, sitio.z)
+	add_child(rz)
+	return per
+
+func _parque_gallarza() -> void:
+	# Parque González Gallarza vivo (pedido de Jon): zona verde de
+	# verdad, columpios con niños, abuelos cuidando y balón.
+	var centro_parque := Vector3(-486, 0, 736)
+	# Rejilla de nodos del grafo: para no pintar verde sobre los
+	# caminos del parque ni pegarlo a las calles.
+	var rej_nodos := {}
+	for nd in _nodos:
+		var cl := Vector2i(int(floor(nd.x / 8.0)), int(floor(nd.y / 8.0)))
+		if not rej_nodos.has(cl):
+			rej_nodos[cl] = []
+		(rej_nodos[cl] as Array).append(nd)
+	var cerca_camino := func(p: Vector2, dist: float) -> bool:
+		var cl := Vector2i(int(floor(p.x / 8.0)), int(floor(p.y / 8.0)))
+		for dx in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				for nd in (rej_nodos.get(Vector2i(cl.x + dx, cl.y + dz), []) as Array):
+					if (nd as Vector2).distance_to(p) < dist:
+						return true
+		return false
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var c := PackedColorArray()
+	var verdes := [Color(0.16, 0.42, 0.16), Color(0.19, 0.47, 0.19), Color(0.14, 0.38, 0.14)]
+	var nverde := 0
+	for gx in range(-546, -426, 4):
+		for gz in range(678, 794, 4):
+			var pc := Vector2(gx + 2.0, gz + 2.0)
+			if _choca(pc, 1.0) or cerca_camino.call(pc, 2.3):
+				continue
+			var y := _altura(pc.x, pc.y)
+			_caja_en(v, n, c, Vector3(pc.x, y + 0.02, pc.y), Vector3(4.06, 0.1, 4.06), verdes[(gx / 4 + gz / 4) % 3], 0.0)
+			nverde += 1
+	_gallarza_verde = nverde
+	# Árboles del parque
+	var narb := 0
+	var intentos := 0
+	while narb < 14 and intentos < 90:
+		intentos += 1
+		var tp := Vector2(-540.0 + _rng.randf() * 108.0, 684.0 + _rng.randf() * 104.0)
+		if _choca(tp, 1.2) or cerca_camino.call(tp, 3.0):
+			continue
+		if tp.distance_to(Vector2(-512.7, 716.3)) < 6.5 or tp.distance_to(Vector2(-469.5, 730.0)) < 5.0:
+			continue
+		var ty := _altura(tp.x, tp.y)
+		_caja_en(v, n, c, Vector3(tp.x, ty + 0.85, tp.y), Vector3(0.28, 1.7, 0.28), Color(0.36, 0.26, 0.17), 0.0)
+		_caja_en(v, n, c, Vector3(tp.x, ty + 2.15, tp.y), Vector3(2.3, 1.1, 2.3), Color(0.13, 0.36, 0.13), 0.0)
+		_caja_en(v, n, c, Vector3(tp.x, ty + 2.85, tp.y), Vector3(1.6, 0.8, 1.6), Color(0.16, 0.42, 0.16), 0.0)
+		narb += 1
+	# Banco frente a los columpios y estructura de los columpios
+	var yb := _altura(-512.7, 721.8)
+	_caja_en(v, n, c, Vector3(-512.7, yb + 0.24, 721.8), Vector3(2.2, 0.10, 0.55), Color(0.42, 0.30, 0.19), 0.0)
+	_caja_en(v, n, c, Vector3(-512.7, yb + 0.62, 722.12), Vector3(2.2, 0.55, 0.09), Color(0.42, 0.30, 0.19), 0.0)
+	for bx in [-1.0, 1.0]:
+		_caja_en(v, n, c, Vector3(-512.7 + bx, yb + 0.12, 721.8), Vector3(0.09, 0.24, 0.5), Color(0.25, 0.25, 0.28), 0.0)
+	var ys := _altura(-512.7, 716.3)
+	var metal := Color(0.38, 0.40, 0.44)
+	for sx in [-1.8, 1.8]:
+		for sz in [-0.5, 0.5]:
+			_caja_en(v, n, c, Vector3(-512.7 + sx, ys + 1.1, 716.3 + sz), Vector3(0.11, 2.2, 0.11), metal, 0.0)
+		_caja_en(v, n, c, Vector3(-512.7 + sx, ys + 2.24, 716.3), Vector3(0.11, 0.11, 1.1), metal, 0.0)
+	_caja_en(v, n, c, Vector3(-512.7, ys + 2.26, 716.3), Vector3(3.8, 0.13, 0.13), Color(0.75, 0.22, 0.18), 0.0)
+	add_child(_malla_de(v, n, c, Color.WHITE))
+	_registrar_rect(centro_parque, Vector2(-512.7 + 486.0, 721.8 - 736.0), Vector2(2.2, 0.6))
+	_registrar_rect(centro_parque, Vector2(-512.7 + 486.0, 716.3 - 736.0), Vector2(3.9, 1.1))
+	# Los dos columpios: pivotes en la barra, uno con niño
+	var gris_cadena := Color(0.55, 0.56, 0.60)
+	for i in 2:
+		var piv := Node3D.new()
+		piv.position = Vector3(-513.6 + i * 1.8, ys + 2.2, 716.3)
+		for cx in [-0.20, 0.20]:
+			piv.add_child(_pieza(Vector3(0.045, 1.45, 0.045), Vector3(cx, -0.72, 0), gris_cadena))
+		piv.add_child(_pieza(Vector3(0.48, 0.05, 0.26), Vector3(0, -1.46, 0), Color(0.20, 0.22, 0.26)))
+		add_child(piv)
+		if i == 0:
+			var nin := _hacer_persona(Color(0.85, 0.35, 0.20), Color(0.20, 0.24, 0.40), Color(0.15, 0.10, 0.07))
+			var rz: Node3D = nin["raiz"]
+			rz.scale = Vector3.ONE * 0.62
+			rz.position = Vector3(0, -1.40, 0.03)
+			(nin["pi"] as Node3D).rotation.x = -1.30
+			(nin["pd"] as Node3D).rotation.x = -1.30
+			(nin["bi"] as Node3D).rotation.x = -2.65
+			(nin["bd"] as Node3D).rotation.x = -2.65
+			piv.add_child(rz)
+			_columpios.append({"pivote": piv, "d": nin, "fase": 0.0, "amp": 0.48})
+		else:
+			_columpios.append({"pivote": piv, "d": {}, "fase": 2.1, "amp": 0.16})
+	# Niño esperando su turno junto a los columpios
+	var esp := _persona_gal(Vector3(-510.2, 0, 718.8), Vector2.ZERO, Color(0.25, 0.55, 0.80), Color(0.30, 0.20, 0.12), false, 0.62)
+	(esp["raiz"] as Node3D).rotation.y = -PI / 2.0
+	_estaticos.append({"d": esp, "raiz": esp["raiz"], "tipo": "espera", "fase": _rng.randf() * 6.0})
+	# Abuelos en el banco, mirando a los columpios
+	var pelo_canas := Color(0.85, 0.84, 0.80)
+	var abuelo := _persona_gal(Vector3(-513.2, 0, 721.8), Vector2.ZERO, Color(0.35, 0.32, 0.28), pelo_canas, false, 1.0)
+	var abuela := _persona_gal(Vector3(-512.2, 0, 721.8), Vector2.ZERO, Color(0.55, 0.35, 0.45), pelo_canas, true, 1.0)
+	for ab in [abuelo, abuela]:
+		var rz2: Node3D = ab["raiz"]
+		rz2.position.y = _altura(rz2.position.x, rz2.position.z) + 0.52
+		rz2.rotation.y = PI
+		(ab["pi"] as Node3D).rotation.x = -1.25
+		(ab["pd"] as Node3D).rotation.x = -1.25
+		_estaticos.append({"d": ab, "raiz": rz2, "tipo": "sentado", "fase": _rng.randf() * 6.0})
+	# Un abuelo de pie charlando con su nieto
+	var ab2 := _persona_gal(Vector3(-503.6, 0, 724.6), Vector2.ZERO, Color(0.30, 0.38, 0.30), pelo_canas, false, 1.0)
+	var ni2 := _persona_gal(Vector3(-502.3, 0, 724.9), Vector2.ZERO, Color(0.90, 0.70, 0.20), Color(0.20, 0.13, 0.08), false, 0.62)
+	var ra2: Node3D = ab2["raiz"]
+	var rn2: Node3D = ni2["raiz"]
+	ra2.rotation.y = atan2(rn2.position.x - ra2.position.x, rn2.position.z - ra2.position.z)
+	rn2.rotation.y = atan2(ra2.position.x - rn2.position.x, ra2.position.z - rn2.position.z)
+	_estaticos.append({"d": ab2, "raiz": ra2, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	_estaticos.append({"d": ni2, "raiz": rn2, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	# Dos niños pasándose el balón en el verde
+	var nA := _persona_gal(Vector3(-473.0, 0, 730.0), Vector2.ZERO, Color(0.20, 0.65, 0.35), Color(0.12, 0.09, 0.06), false, 0.62)
+	var nB := _persona_gal(Vector3(-466.5, 0, 730.6), Vector2.ZERO, Color(0.85, 0.55, 0.15), Color(0.35, 0.22, 0.12), false, 0.62)
+	var rA: Node3D = nA["raiz"]
+	var rB: Node3D = nB["raiz"]
+	rA.rotation.y = atan2(rB.position.x - rA.position.x, rB.position.z - rA.position.z)
+	rB.rotation.y = atan2(rA.position.x - rB.position.x, rA.position.z - rB.position.z)
+	_estaticos.append({"d": nA, "raiz": rA, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	_estaticos.append({"d": nB, "raiz": rB, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	var balon := MeshInstance3D.new()
+	var esf := SphereMesh.new()
+	esf.radius = 0.17
+	esf.height = 0.34
+	balon.mesh = esf
+	var mat_b := StandardMaterial3D.new()
+	mat_b.albedo_color = Color(0.93, 0.93, 0.93)
+	esf.material = mat_b
+	add_child(balon)
+	var pa := Vector3(rA.position.x, 0, rA.position.z) + (Vector3(rB.position.x, 0, rB.position.z) - Vector3(rA.position.x, 0, rA.position.z)).normalized() * 0.55
+	var pb := Vector3(rB.position.x, 0, rB.position.z) + (Vector3(rA.position.x, 0, rA.position.z) - Vector3(rB.position.x, 0, rB.position.z)).normalized() * 0.55
+	_balon_gal = {"nodo": balon, "a": pa, "b": pb, "t": 0.0, "y": _altura(-469.5, 730.3), "da": nA, "db": nB, "flick": 0.0}
+	print("GALLARZA_OK verde=", nverde, " arboles=", narb, " columpios=", _columpios.size(), " ninos=5 abuelos=3")
 
 func _poi_nom(nombre: String) -> Vector3:
 	for poi in _pois:
@@ -9888,6 +10418,44 @@ func _crear_vida_calle(camisas: Array, pelos: Array) -> void:
 		rd.rotation.y = atan2(rc.position.x - rd.position.x, rc.position.z - rd.position.z)
 		_estaticos.append({"d": perC, "raiz": rc, "tipo": "hablar", "fase": _rng.randf() * 6.0})
 		_estaticos.append({"d": perD, "raiz": rd, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	# Más vida quieta: sentados y una pareja en el Parque del Ebro
+	for datos_e in [[Vector2(3.0, 1.0)], [Vector2(-2.0, 3.0)]]:
+		var per_e := _persona_en(_poi_nom("Parque del Ebro"), datos_e[0], camisas[k % camisas.size()], pelos[k % pelos.size()])
+		k += 1
+		var raiz_e2: Node3D = per_e["raiz"]
+		raiz_e2.position.y = _altura(raiz_e2.position.x, raiz_e2.position.z) + 0.52
+		raiz_e2.rotation.y = _rng.randf() * TAU
+		(per_e["pi"] as Node3D).rotation.x = -1.25
+		(per_e["pd"] as Node3D).rotation.x = -1.25
+		_estaticos.append({"d": per_e, "raiz": raiz_e2, "tipo": "sentado", "fase": _rng.randf() * 6.0})
+	var base_e := _poi_nom("Parque del Ebro")
+	var per_e1 := _persona_en(base_e, Vector2(6.0, -2.0), camisas[k % camisas.size()], pelos[k % pelos.size()])
+	k += 1
+	var per_e2 := _persona_en(base_e, Vector2(7.4, -1.6), camisas[k % camisas.size()], pelos[k % pelos.size()])
+	k += 1
+	var re1: Node3D = per_e1["raiz"]
+	var re2: Node3D = per_e2["raiz"]
+	re1.rotation.y = atan2(re2.position.x - re1.position.x, re2.position.z - re1.position.z)
+	re2.rotation.y = atan2(re1.position.x - re2.position.x, re1.position.z - re2.position.z)
+	_estaticos.append({"d": per_e1, "raiz": re1, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	_estaticos.append({"d": per_e2, "raiz": re2, "tipo": "hablar", "fase": _rng.randf() * 6.0})
+	# Gente esperando el autobús en las paradas: la flota urbana
+	# pasa por la red real de paradas, y ahora hay quien la espere.
+	var con_espera := 0
+	for pi_p in range(_paradas_red.size()):
+		if con_espera >= 8:
+			break
+		if pi_p % 25 != 0:
+			continue
+		var par: Dictionary = _paradas_red[pi_p]
+		var pp := Vector2(float(par["x"]), float(par["z"]))
+		if absf(pp.x) > 900.0 or absf(pp.y) > 700.0:
+			continue
+		var per_p := _persona_en(Vector3(pp.x, 0, pp.y), Vector2(0.4, 0.4), camisas[k % camisas.size()], pelos[k % pelos.size()])
+		k += 1
+		(per_p["raiz"] as Node3D).rotation.y = atan2(float(par["hx"]), float(par["hz"])) + PI / 2.0
+		_estaticos.append({"d": per_p, "raiz": per_p["raiz"], "tipo": "espera", "fase": _rng.randf() * 6.0})
+		con_espera += 1
 	# Perros acompañando a los primeros paseantes
 	var col_perros := [Color(0.55, 0.38, 0.22), Color(0.85, 0.82, 0.78), Color(0.20, 0.18, 0.16), Color(0.65, 0.50, 0.30)]
 	for j in mini(7, _peatones.size()):
@@ -10019,6 +10587,35 @@ func _mover_peatones(delta: float) -> void:
 				(d2["bd"] as Node3D).rotation.x = -2.5 + cos(_tiempo * 0.8 + f2) * 0.25
 				(d2["pi"] as Node3D).rotation.x = -0.7 + sin(_tiempo * 0.7 + f2) * 0.2
 				(d2["pd"] as Node3D).rotation.x = -0.7 + cos(_tiempo * 0.6 + f2) * 0.2
+	# Columpios de Gallarza: balanceo continuo, el ocupado con las
+	# piernas siguiendo el vaivén; y el balón que va y viene.
+	for col in _columpios:
+		var piv_c: Node3D = col["pivote"]
+		var ond := sin(_tiempo * 1.35 + float(col["fase"]))
+		piv_c.rotation.x = ond * float(col["amp"])
+		var dc: Dictionary = col["d"]
+		if not dc.is_empty():
+			(dc["pi"] as Node3D).rotation.x = -1.30 + ond * 0.35
+			(dc["pd"] as Node3D).rotation.x = -1.30 + ond * 0.35
+	if not _balon_gal.is_empty():
+		_balon_gal["t"] = float(_balon_gal["t"]) + delta / 1.15
+		if float(_balon_gal["t"]) >= 1.0:
+			_balon_gal["t"] = 0.0
+			var tmp_p: Vector3 = _balon_gal["a"]
+			_balon_gal["a"] = _balon_gal["b"]
+			_balon_gal["b"] = tmp_p
+			var tmp_d: Dictionary = _balon_gal["da"]
+			_balon_gal["da"] = _balon_gal["db"]
+			_balon_gal["db"] = tmp_d
+			_balon_gal["flick"] = 0.28
+		var tb := float(_balon_gal["t"])
+		var pos_b: Vector3 = (_balon_gal["a"] as Vector3).lerp(_balon_gal["b"], tb)
+		pos_b.y = float(_balon_gal["y"]) + 0.17 + sin(tb * PI) * 0.38
+		(_balon_gal["nodo"] as Node3D).position = pos_b
+		if float(_balon_gal.get("flick", 0.0)) > 0.0:
+			_balon_gal["flick"] = float(_balon_gal["flick"]) - delta
+			var dk: Dictionary = _balon_gal["da"]
+			(dk["pd"] as Node3D).rotation.x = -1.0 * maxf(0.0, float(_balon_gal["flick"]) / 0.28)
 	for dog in _perros:
 		var dueno: Dictionary = _peatones[int(dog["dueno"])]
 		var pos_d: Node3D = dueno["raiz"]
@@ -10069,7 +10666,7 @@ func _y_tablero(pu: Dictionary, p: Vector2) -> float:
 	var b: Vector2 = pu["b"]
 	var ab := b - a
 	var t := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
-	return lerpf(float(pu["ya"]), float(pu["yb"]), t) + sin(t * PI) * 0.5
+	return lerpf(float(pu["ya"]), float(pu["yb"]), t) + sin(t * PI) * float(pu.get("bache", 0.5))
 
 # Puentes sobre el Ebro: se detectan las calles que cruzan el río y se
 # registra un corredor con la altura del tablero. _altura() usa esos
@@ -10190,12 +10787,98 @@ func _crear_puentes() -> void:
 	# El paso elevado de Republica Argentina sobre el ferrocarril:
 	# no es un puente del rio, pero usa el mismo corredor de
 	# alturas para que la avenida pase POR ENCIMA de las vias.
+	# Antes era UNA cuerda recta de 110 m y la avenida real CURVA:
+	# el tablero cortaba las calzadas en diagonal (visto por Jon).
+	# Ahora el corredor sigue la polilínea real de la avenida
+	# (las dos calzadas, cosidas por extremos coincidentes) con la
+	# altura por distancia al cruce: 4,2 m sobre las vías y rampas
+	# suaves hasta el suelo a ~95 m.
 	var cruce_ra := Vector2(-649.0, 1075.0)
-	var dir_ra := Vector2(0.30, 0.954).normalized()
-	var ea_ra: Vector2 = cruce_ra - dir_ra * 55.0
-	var eb_ra: Vector2 = cruce_ra + dir_ra * 55.0
-	_puentes.append({"a": ea_ra, "b": eb_ra, "ancho": 13.5, "n": "República Argentina (ferrocarril)",
-		"ya": _altura_terreno(ea_ra.x, ea_ra.y) + 4.2, "yb": _altura_terreno(eb_ra.x, eb_ra.y) + 4.2})
+	var frags_ra: Array = []
+	for calle_ra in _calles_nombradas:
+		if String(calle_ra.get("n", "")) == "Avenida República Argentina":
+			var pts_ra: Array = []
+			for p_ra in calle_ra["p"]:
+				pts_ra.append(Vector2(float(p_ra[0]), float(p_ra[1])))
+			if pts_ra.size() >= 2:
+				frags_ra.append(pts_ra)
+	var cadena_ra: Array = []
+	while not frags_ra.is_empty() and cadena_ra.is_empty():
+		var semilla: Array = frags_ra[0]
+		frags_ra.remove_at(0)
+		var cadena_t: Array = semilla.duplicate()
+		var progreso := true
+		while progreso and not frags_ra.is_empty():
+			progreso = false
+			for i in range(frags_ra.size() - 1, -1, -1):
+				var f: Array = frags_ra[i]
+				var unido := true
+				if (f[0] as Vector2).distance_to(cadena_t[cadena_t.size() - 1]) < 0.6:
+					for j in range(1, f.size()):
+						cadena_t.append(f[j])
+				elif (f[f.size() - 1] as Vector2).distance_to(cadena_t[cadena_t.size() - 1]) < 0.6:
+					for j in range(f.size() - 2, -1, -1):
+						cadena_t.append(f[j])
+				elif (f[f.size() - 1] as Vector2).distance_to(cadena_t[0]) < 0.6:
+					# Anteponer f (sin su último punto, que es el
+					# inicio actual) PRESERVANDO el orden: insert(0)
+					# en bucle lo invertía y la cadena zigzagueaba.
+					var nueva3: Array = []
+					for j in range(f.size() - 1):
+						nueva3.append(f[j])
+					nueva3.append_array(cadena_t)
+					cadena_t = nueva3
+				elif (f[0] as Vector2).distance_to(cadena_t[0]) < 0.6:
+					# Anteponer f DEL REVÉS (su inicio es el inicio
+					# actual): de su último punto a su segundo.
+					var nueva4: Array = []
+					for j in range(f.size() - 1, 0, -1):
+						nueva4.append(f[j])
+					nueva4.append_array(cadena_t)
+					cadena_t = nueva4
+				else:
+					unido = false
+				if unido:
+					frags_ra.remove_at(i)
+					progreso = true
+		var d_min := 1.0e9
+		for p_c in cadena_t:
+			d_min = minf(d_min, (p_c as Vector2).distance_to(cruce_ra))
+		if d_min < 20.0:
+			cadena_ra = cadena_t
+	var n_ra := 0
+	var n_series_ra := 0
+	if cadena_ra.size() >= 2:
+		# Tramos consecutivos dentro de la ventana del cruce; al
+		# salir de la ventana se corta la serie (la cadena baja por
+		# una calzada y vuelve por la otra: no se cose el salto).
+		var serie: Array = []
+		var series: Array = []
+		for i in range(cadena_ra.size()):
+			var p_s: Vector2 = cadena_ra[i]
+			if p_s.distance_to(cruce_ra) < 105.0:
+				serie.append(p_s)
+			else:
+				if serie.size() >= 2:
+					series.append(serie)
+				serie = []
+		if serie.size() >= 2:
+			series.append(serie)
+		n_series_ra = series.size()
+		for serie2 in series:
+			# Tramos entre vértices consecutivos de la polilínea
+			# real: el corredor sigue la curva de la avenida al
+			# metro, sin cuerdas que corten las calzadas.
+			var rem: Array = serie2
+			for i in range(rem.size() - 1):
+				var pa: Vector2 = rem[i]
+				var pb: Vector2 = rem[i + 1]
+				var ha := 4.2 * (1.0 - smoothstep(35.0, 95.0, pa.distance_to(cruce_ra)))
+				var hb := 4.2 * (1.0 - smoothstep(35.0, 95.0, pb.distance_to(cruce_ra)))
+				_puentes.append({"a": pa, "b": pb, "ancho": 10.5, "n": "República Argentina (ferrocarril)",
+					"ya": _altura_terreno(pa.x, pa.y) + ha, "yb": _altura_terreno(pb.x, pb.y) + hb, "bache": 0.0})
+				n_ra += 1
+	print("PUENTE_RA_OK tramos=", n_ra, " cadena=", cadena_ra.size(), " series=", n_series_ra)
 
 func _viga(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, p1: Vector3, p2: Vector3, lat: Vector2, grosor: float, alto: float, col: Color) -> void:
 	# Una viga entre dos puntos 3D (para celosías y arcos): sección
@@ -10404,7 +11087,7 @@ func _puentes_medida() -> void:
 			dh = 0.0
 	var sagasta: Dictionary = {}
 	var pasarela: Dictionary = {}
-	var paso_ra: Dictionary = {}
+	var pasos_ra: Array = []
 	for pu in _puentes:
 		match String(pu.get("n", "")):
 			"Puente de Práxedes Mateo Sagasta":
@@ -10412,7 +11095,7 @@ func _puentes_medida() -> void:
 			"Pasarela del Ebro":
 				pasarela = pu
 			"República Argentina (ferrocarril)":
-				paso_ra = pu
+				pasos_ra.append(pu)
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var cols := PackedColorArray()
@@ -10428,9 +11111,10 @@ func _puentes_medida() -> void:
 	if not pasarela.is_empty():
 		_puente_pasarela(verts, normals, cols, pasarela)
 		print("PUENTE_MEDIDA_OK pasarela")
-	if not paso_ra.is_empty():
-		_paso_rep_argentina(verts, normals, cols, paso_ra)
-		print("PUENTE_MEDIDA_OK rep_argentina")
+	if not pasos_ra.is_empty():
+		for pu_ra in pasos_ra:
+			_paso_rep_argentina(verts, normals, cols, pu_ra)
+		print("PUENTE_MEDIDA_OK rep_argentina tramos=", pasos_ra.size())
 	if verts.size() > 0:
 		add_child(_malla_de(verts, normals, cols, Color.WHITE))
 
@@ -10651,10 +11335,11 @@ func _paso_rep_argentina(verts: PackedVector3Array, normals: PackedVector3Array,
 		var pc: Vector2 = a.lerp(b, tt)
 		var yt := _y_tablero(pu, pc)
 		var yb := _altura_terreno(pc.x, pc.y) - 0.4
+		var semi_ra := float(pu["ancho"]) * 0.5
 		for lado in [-1.0, 1.0]:
-			var lp: Vector2 = pc + n2 * (6.55 * lado)
+			var lp: Vector2 = pc + n2 * ((semi_ra - 0.2) * lado)
 			_caja_en(verts, normals, cols, Vector3(lp.x, yt + 0.5, lp.y), Vector3(0.35, 1.0, largo / pasos + 0.12), hormigon, rot)
-			var lp2: Vector2 = pc + n2 * (6.35 * lado)
+			var lp2: Vector2 = pc + n2 * ((semi_ra - 0.4) * lado)
 			_caja_en(verts, normals, cols, Vector3(lp2.x, (yt + yb) * 0.5, lp2.y), Vector3(0.3, yt - yb, largo / pasos + 0.12), hormigon, rot)
 
 func _soportales() -> void:
@@ -10838,7 +11523,7 @@ func _probar_controles() -> void:
 func _probar_interiores() -> void:
 	_empleo_desbloqueado = false
 	var entradas := 0
-	for id in ["piso", "ayuntamiento", "gimnasio", "peluqueria", "tienda", "panaderia"]:
+	for id in ["piso", "ayuntamiento", "gimnasio", "peluqueria", "tienda", "panaderia", "decathlon"]:
 		var f: Vector3 = _interiores[id]["fuera"]
 		_jugador.position = f + Vector3(0, 0.95, 0)
 		_entrar_interior(id)
@@ -10870,7 +11555,7 @@ func _probar_interiores() -> void:
 	_jugador.position = cen_p + Vector3(0, 0.95, tam_p.y / 2.0 + 2.0)
 	_comprobar_salida_interior()
 	var salio_andando := _en_interior == "" and absf(_jugador.position.x) < 2700.0
-	var pasa: bool = entradas == 6 and _empleo_desbloqueado and _dia == dia0 + 1 and int(_minutos) == 480 and _pelo_idx != p0 and _camisa_idx != c0 and _dinero == dinero0 - 2 and salio_andando
+	var pasa: bool = entradas == 7 and _empleo_desbloqueado and _dia == dia0 + 1 and int(_minutos) == 480 and _pelo_idx != p0 and _camisa_idx != c0 and _dinero == dinero0 - 2 and salio_andando
 	# Tenderos: están en las tres tiendas; la panadera ofrece la barra
 	# por diálogo al acercarte y la cobra (2 €).
 	_dinero = 50
@@ -11178,6 +11863,14 @@ func _capturar_si_toca() -> void:
 		_probar_agua()
 	elif args.has("probar_bici"):
 		_probar_bici()
+	elif args.has("probar_gallarza"):
+		_probar_gallarza()
+	elif args.has("probar_buses"):
+		_probar_buses()
+	elif args.has("probar_ra"):
+		_probar_ra()
+	elif args.has("probar_decathlon"):
+		_probar_decathlon()
 		return
 	elif args.has("probar_berceo"):
 		_probar_berceo()
@@ -11711,6 +12404,21 @@ func _capturar_si_toca() -> void:
 		_actualizar_camara(0.016)
 		_cam.look_at_from_position(_coche.position + Vector3(-7.0, 2.4, 0), _coche.position + Vector3(3.0, 0.8, 0), Vector3.UP)
 		nombre = "bici.png"
+	elif args.has("capturar_mtb"):
+		for tt in [Vector2i(2, 3), Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4), Vector2i(4, 4)]:
+			_construir_tile(tt)
+		_mis_coches = [{"id": 13, "danio": 0, "motor": 0, "frenos": 0}]
+		_coche_activo = 0
+		_reconstruir_coche()
+		_coche.position = Vector3(-500, _altura(-500, 173), 173)
+		_coche_dir = PI * 0.5
+		_coche.rotation.y = _coche_dir
+		_jugador.position = _coche.position + Vector3(-2.0, 0.95, 0)
+		_alternar_coche()
+		_coche_vel = 5.0
+		_actualizar_camara(0.016)
+		_cam.look_at_from_position(_coche.position + Vector3(-7.0, 2.4, 0), _coche.position + Vector3(3.0, 0.8, 0), Vector3.UP)
+		nombre = "mtb.png"
 	elif args.has("capturar_vel"):
 		for tt in [Vector2i(2, 3), Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4), Vector2i(4, 4)]:
 			_construir_tile(tt)
@@ -11752,6 +12460,32 @@ func _capturar_si_toca() -> void:
 		_refrescar_rotulos()
 		_cam.look_at_from_position(Vector3(337.6, _altura(337.6, 200.3) + 2.4, 200.3), Vector3(343.7, _altura(343.7, 202.0) + 1.4, 202.0), Vector3.UP)
 		nombre = "bloque7.png"
+	elif args.has("capturar_gallarza"):
+		for tt in [Vector2i(3, 4), Vector2i(2, 4), Vector2i(3, 3), Vector2i(2, 3), Vector2i(4, 4), Vector2i(3, 5)]:
+			_construir_tile(tt)
+		_jugador.position = Vector3(-474.6, _altura(-474.6, 698.7) + 0.95, 698.7)
+		_dir_jugador = 0.0
+		_jugador.rotation.y = 0.0
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(-420.0, _altura(-420.0, 790.0) + 55.0, 790.0), Vector3(-500.0, _altura(-500.0, 720.0), 720.0), Vector3.UP)
+		nombre = "gallarza.png"
+	elif args.has("capturar_ra"):
+		for tt in [Vector2i(3, 4), Vector2i(2, 4), Vector2i(3, 5), Vector2i(2, 5), Vector2i(3, 3), Vector2i(4, 4)]:
+			_construir_tile(tt)
+		_jugador.position = Vector3(-652.7, _altura(-652.7, 1086.1) + 0.95, 1086.1)
+		_dir_jugador = 0.0
+		_jugador.rotation.y = 0.0
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(-610.0, _altura(-610.0, 1140.0) + 42.0, 1140.0), Vector3(-652.0, _altura(-652.0, 1062.0), 1062.0), Vector3.UP)
+		nombre = "rep_argentina.png"
+	elif args.has("capturar_decathlon"):
+		_entrar_interior("decathlon")
+		var cen_d: Vector3 = _interiores["decathlon"]["centro"]
+		_jugador.position = cen_d + Vector3(0, 0.95, 7.0)
+		_dir_jugador = PI
+		_jugador.rotation.y = PI
+		_cam.look_at_from_position(cen_d + Vector3(7.5, 5.5, 8.5), cen_d + Vector3(-3.0, 0.8, -2.0), Vector3.UP)
+		nombre = "decathlon.png"
 	elif args.has("capturar_eje_galdos"):
 		for tt in [Vector2i(2, 4), Vector2i(2, 3), Vector2i(1, 4)]:
 			_construir_tile(tt)
