@@ -7,3 +7,4 @@ juego/web/
 *.bak*
 __pycache__/
 *.muse-github-snapshot-sync.json
+juego/.godot/
