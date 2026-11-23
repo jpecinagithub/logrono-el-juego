@@ -11716,6 +11716,14 @@ func _capturar_si_toca() -> void:
 			print("RADAR_OK multa=", antes_r - _dinero)
 		get_tree().quit()
 		return
+	elif args.has("capturar_carretera"):
+		# Vista de conducción por la Av. de Madrid hacia el sur: el
+		# firme tiene que verse plano, sin cuñas ni altibajos.
+		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(0, -1), Vector2i(1, -1)]:
+			_construir_tile(_tile_de(Vector2(-430, 1450)) + dt)
+		_coche.position = Vector3(-428.0, _altura(-428.0, 1440.0), 1440.0)
+		_cam.look_at_from_position(Vector3(-431.0, _altura(-431.0, 1408.0) + 4.2, 1408.0), Vector3(-424.0, _altura(-424.0, 1520.0) + 1.0, 1520.0), Vector3.UP)
+		nombre = "carretera.png"
 	elif args.has("capturar_farmacia"):
 		# La esquina de la Farmacia María Cristina (-239.6, 177.2),
 		# vista desde el suroeste como en la captura de Jon.
