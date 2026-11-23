@@ -3892,6 +3892,7 @@ var _aviso_banco_cd := 0.0
 var _btn_modo := "coche"
 var _locales_total := 0
 var _rotulos_datos := {}
+var _colegios_puertas := {}
 var _rotulos_tile_actual: Array = []
 var _rotulos_activos := {}
 var _terrazas_total := 0
@@ -11263,6 +11264,7 @@ func _crear_colegios() -> void:
 	var normals := PackedVector3Array()
 	var cols := PackedColorArray()
 	var n_pistas := 0
+	var rotulos_col: Array = []
 	var col_suelo := Color(0.55, 0.54, 0.50)
 	var col_verja := Color(0.25, 0.30, 0.28)
 	var lin2 := Color(0.92, 0.92, 0.90)
@@ -11312,6 +11314,31 @@ func _crear_colegios() -> void:
 					_viga(verts, normals, cols, Vector3(g2.x, ym, g2.y), Vector3(b.x, y2, b.y), dir, 0.05, 0.05, col_verja)
 				else:
 					_viga(verts, normals, cols, Vector3(a.x, y1, a.y), Vector3(b.x, y2, b.y), dir, 0.05, 0.05, col_verja)
+		# El letrero con el nombre sobre la puerta (la del lado
+		# largo): dos postes en la línea de la verja y un panel
+		# azul institucional, como los de los colegios de verdad.
+		# El panel va en esta malla fundida; el texto, por el
+		# sistema de rótulos (blanco sobre el panel).
+		var ga: Vector2 = poly[i_largo]
+		var gb: Vector2 = poly[(i_largo + 1) % poly.size()]
+		var gmid := (ga + gb) * 0.5
+		var gdir := (gb - ga).normalized()
+		var gnorm := Vector2(-gdir.y, gdir.x)
+		var centro_col := Vector2(float(col["c"][0]), float(col["c"][1]))
+		if gnorm.dot(gmid - centro_col) < 0.0:
+			gnorm = -gnorm
+		var gy := _altura_terreno(gmid.x, gmid.y)
+		var nombre_col := String(col["n"])
+		var ancho_panel := clampf(float(nombre_col.length()) * 0.21, 5.4, 8.6)
+		var rot_panel := atan2(-gdir.y, gdir.x)
+		for lado_p in [-1.0, 1.0]:
+			var pp2: Vector2 = gmid + gdir * (ancho_panel * 0.5 - 0.25) * lado_p
+			_caja_en(verts, normals, cols, Vector3(pp2.x, _altura_terreno(pp2.x, pp2.y) + 1.52, pp2.y), Vector3(0.15, 3.04, 0.15), col_verja, 0.0)
+		_caja_en(verts, normals, cols, Vector3(gmid.x, gy + 2.55, gmid.y), Vector3(ancho_panel, 0.95, 0.10), Color(0.14, 0.31, 0.53), rot_panel)
+		_caja_en(verts, normals, cols, Vector3(gmid.x, gy + 3.06, gmid.y), Vector3(ancho_panel, 0.09, 0.11), Color(0.85, 0.88, 0.90), rot_panel)
+		var pos_rot := gmid + gnorm * 0.12
+		rotulos_col.append({"n": nombre_col, "h": gnorm, "w": ancho_panel, "g": 1.2, "p": Vector3(pos_rot.x, gy + 2.55, pos_rot.y)})
+		_colegios_puertas[nombre_col] = {"pos": Vector3(gmid.x, gy, gmid.y), "n": gnorm, "dir": gdir}
 		var hechas: Array = []
 		if idx_col < pistas_todas.size():
 			for mp in pistas_todas[idx_col]:
@@ -11330,9 +11357,10 @@ func _crear_colegios() -> void:
 				_caja_en(verts, normals, cols, Vector3(gx3, yp2 + 1.0, cand.y + 0.9), Vector3(0.08, 2.0, 0.08), lin2, 0.0)
 				_caja_en(verts, normals, cols, Vector3(gx3, yp2 + 1.95, cand.y), Vector3(0.08, 0.08, 1.9), lin2, 0.0)
 			n_pistas += 1
+	_rotulos_datos["colegios"] = rotulos_col
 	var malla := _malla_de(verts, normals, cols, Color.WHITE)
 	add_child(malla)
-	print("COLEGIOS_OK n=", datos["colegios"].size(), " pistas=", n_pistas)
+	print("COLEGIOS_OK n=", datos["colegios"].size(), " pistas=", n_pistas, " letreros=", rotulos_col.size())
 
 func _puentes_medida() -> void:
 	# Tanda 3 de los 50: los dos puentes históricos a medida sobre la
@@ -11891,6 +11919,19 @@ func _capturar_si_toca() -> void:
 			print("RADAR_OK multa=", antes_r - _dinero)
 		get_tree().quit()
 		return
+	elif args.has("capturar_colegio"):
+		# La puerta del Colegio Las Gaunas desde la calle: el
+		# letrero azul con el nombre sobre la verja.
+		var pu_col: Dictionary = _colegios_puertas.get("Colegio Las Gaunas", {})
+		if not pu_col.is_empty():
+			var gp: Vector3 = pu_col["pos"]
+			var gn: Vector2 = pu_col["n"]
+			for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(1, -1)]:
+				_construir_tile(_tile_de(Vector2(gp.x, gp.z)) + dt)
+			_jugador.position = Vector3(gp.x + gn.x * 6.0, _altura(gp.x + gn.x * 6.0, gp.z + gn.y * 6.0) + 0.95, gp.z + gn.y * 6.0)
+			_refrescar_rotulos()
+			_cam.look_at_from_position(Vector3(gp.x + gn.x * 8.5, gp.y + 2.0, gp.z + gn.y * 8.5), Vector3(gp.x, gp.y + 2.3, gp.z), Vector3.UP)
+		nombre = "colegio.png"
 	elif args.has("capturar_protagonistas"):
 		# Retrato de familia en el Espolón: los cinco PJ y el
 		# jugador en fila, de frente a cámara, sin etiquetas.
