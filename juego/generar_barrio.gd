@@ -22,6 +22,8 @@ var _t_alturas: Array = []
 # Colisiones: polígonos de edificio indexados en una rejilla de 25 m
 var _poligonos: Array = []
 var _islas_rotonda: Array = []
+var _seg_calles: Array = []
+var _seg_vistos := {}
 # Huellas que no deben chocar: suelos deportivos que dibuja
 # su hito (Las Norias) y que el Catastro trae como edificio.
 var _polys_muertos := {}
@@ -1175,6 +1177,19 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 		var base_pts: Array[Vector2] = []
 		for q in calle["p"]:
 			base_pts.append(Vector2(float(q[0]), float(q[1])))
+		# Registro de tramos para el sonido de pasos: la
+		# superficie que pisas (asfalto o acera) se decide
+		# contra estos segmentos, sin duplicados (la misma
+		# calle aparece en las baldosas vecinas).
+		for i2 in range(1, base_pts.size()):
+			var sa: Vector2 = base_pts[i2 - 1]
+			var sb: Vector2 = base_pts[i2]
+			var clave_s := str(int(round(sa.x))) + "," + str(int(round(sa.y))) + ">" + str(int(round(sb.x))) + "," + str(int(round(sb.y)))
+			var clave_s2 := str(int(round(sb.x))) + "," + str(int(round(sb.y))) + ">" + str(int(round(sa.x))) + "," + str(int(round(sa.y)))
+			if _seg_vistos.has(clave_s) or _seg_vistos.has(clave_s2):
+				continue
+			_seg_vistos[clave_s] = true
+			_seg_calles.append([sa, sb, medio, con_acera])
 		for i in base_pts.size():
 			if i > 0:
 				var desde_p: Vector2 = base_pts[i - 1]
@@ -6369,12 +6384,20 @@ func _andar(delta: float) -> void:
 		if _dist_pasos > 2.1:
 			_dist_pasos = 0.0
 			_paso_idx += 1
-			var variantes := ["paso_asfalto", "paso_acera", "paso_hierba"]
+			# El paso suena a la superficie de verdad que
+			# pisas (antes rotaba los tres sonidos a ciegas),
+			# con 4 variantes por superficie: los pies
+			# alternan y ningún paso suena igual al anterior.
+			var sup := _superficie_en(Vector2(_jugador.position.x, _jugador.position.z))
+			var nombre_p := sup + "_" + str(_paso_idx % 4)
 			var elegido: AudioStreamPlayer = null
-			if _banco.has(variantes[_paso_idx % 3]):
-				elegido = _banco[variantes[_paso_idx % 3]]
+			if _banco.has(nombre_p):
+				elegido = _banco[nombre_p]
+			elif _banco.has(sup):
+				elegido = _banco[sup]
 			if elegido != null:
-				elegido.pitch_scale = randf_range(0.92, 1.08)
+				elegido.pitch_scale = randf_range(0.94, 1.06)
+				elegido.volume_db = -11.0 + randf_range(-1.2, 0.8)
 				elegido.play()
 			elif _son_pasos != null:
 				_son_pasos.pitch_scale = randf_range(0.92, 1.08)
@@ -9928,6 +9951,36 @@ func _hacer_player(ruta: String, vol: float, bucle: bool) -> AudioStreamPlayer:
 	add_child(p)
 	return p
 
+func _superficie_en(p: Vector2) -> String:
+	# La superficie bajo los pies, para el sonido de
+	# pasos: asfalto si estás sobre la calzada de un tramo
+	# de calle, acera si estás en su franja de acera, y
+	# hierba en el césped del Parque de los Enamorados.
+	# Fuera de eso, acera: el suelo urbano por defecto.
+	var mejor := 1e9
+	var mejor_medio := 0.0
+	var mejor_acera := false
+	for seg in _seg_calles:
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		if p.x < minf(a.x, b.x) - 13.0 or p.x > maxf(a.x, b.x) + 13.0 or p.y < minf(a.y, b.y) - 13.0 or p.y > maxf(a.y, b.y) + 13.0:
+			continue
+		var d := p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b))
+		if d < mejor:
+			mejor = d
+			mejor_medio = float(seg[2])
+			mejor_acera = bool(seg[3])
+	if mejor <= mejor_medio:
+		return "paso_asfalto"
+	if mejor_acera and mejor <= mejor_medio + 1.85:
+		return "paso_acera"
+	var datos_e := _datos_enamorados()
+	if not datos_e.is_empty():
+		for celda in datos_e.get("celdas", []):
+			if absf(p.x - float(celda[0])) < 9.0 and absf(p.y - float(celda[1])) < 9.0:
+				return "paso_hierba"
+	return "paso_acera"
+
 func _crear_sonido() -> void:
 	_son_motor = _hacer_player("res://audio/motor.wav", -13.0, true)
 	_son_amb = _hacer_player("res://audio/ambiente.wav", -21.0, true)
@@ -9937,7 +9990,7 @@ func _crear_sonido() -> void:
 	if _son_amb != null:
 		_son_amb.play()
 	# Fase 8: banco de efectos, un reproductor por efecto
-	var efectos := ["arranque", "puerta_abrir", "puerta_cerrar", "bocina", "bocina_lejana", "frenada", "paso_asfalto", "paso_acera", "paso_hierba", "radar", "timbre", "aviso", "monedas", "papel"]
+	var efectos := ["arranque", "puerta_abrir", "puerta_cerrar", "bocina", "bocina_lejana", "frenada", "paso_asfalto", "paso_acera", "paso_hierba", "paso_asfalto_0", "paso_asfalto_1", "paso_asfalto_2", "paso_asfalto_3", "paso_acera_0", "paso_acera_1", "paso_acera_2", "paso_acera_3", "paso_hierba_0", "paso_hierba_1", "paso_hierba_2", "paso_hierba_3", "radar", "timbre", "aviso", "monedas", "papel"]
 	for e in efectos:
 		var pl := _hacer_player("res://audio/" + e + ".wav", -11.0, false)
 		if pl != null:
@@ -16341,6 +16394,19 @@ func _capturar_si_toca() -> void:
 		# Fuente de los Ilustres choca y su anillo no.
 		print("ISLAS_PRUEBA_OK pasa=", _choca(Vector2(-824.3, 254.2), 0.4) and not _choca(Vector2(-810.7, 254.2), 0.4), " islas=", _islas_rotonda.size())
 		print("CAPILLA_OK pasa=", _interiores.has("sanmiguel") and not _misa.is_empty() and (_misa["fieles"] as Array).size() == 20 and int(_misa["bancos"]) == 20, " salas=", _interiores.size())
+		# Pasos por superficie: el centro de un tramo suena
+		# a asfalto y alguna celda del parque, a hierba.
+		var pasos_ok := _banco.size() >= 26 and not _seg_calles.is_empty()
+		if pasos_ok:
+			var s0: Array = _seg_calles[0]
+			var mid0: Vector2 = ((s0[0] as Vector2) + (s0[1] as Vector2)) * 0.5
+			pasos_ok = _superficie_en(mid0) == "paso_asfalto"
+		var hierba_ok := false
+		var celdas_p: Array = _datos_enamorados().get("celdas", [])
+		for ic in mini(40, celdas_p.size()):
+			if _superficie_en(Vector2(float(celdas_p[ic][0]), float(celdas_p[ic][1]))) == "paso_hierba":
+				hierba_ok = true
+		print("PASOS_OK pasa=", pasos_ok and hierba_ok, " banco=", _banco.size(), " segmentos=", _seg_calles.size())
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
