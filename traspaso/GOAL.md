@@ -479,3 +479,12 @@ Commit juego: 14a3251. Publicado en la web (pck md5 48299b92f40ce22e5c7b23f8434b
 - Ademas, la iglesia pasa a punto principal del mapa (pois.json c=1, como el Decathlon): nombre permanente en el mapa del telefono y punto dorado en el minimapa; el teletransporte del mapa deja al jugador justo en la puerta.
 - Verificacion: verificar 117 marcas OK, 0 FALLO (CAPILLA_OK y PASOS_OK en verde). Sondas temporales sonda_sm/capturar_sm retiradas antes de publicar.
 - Pendiente sin tocar: la bici Grajera de Decathlon sigue sin reproducirse; a la espera de la prueba de Jon (Ctrl+F5 y clic en el boton azul).
+
+## TANDA 19 - la puerta de San Miguel estaba dentro de un edificio (2026-11-24, publicada)
+Commit juego: 4d1399e. Publicado en la web (pck md5 3919349b5692e0a4a9d1e67a25c9e97; copia previa ~/logrono-bak-tanda19-20261124.tar) y comprobado en la URL publica con captura mirada (BOOT_OK).
+- Aviso de Jon, ya con la version actualizada (los pasos nuevos sonaban): la entrada a la Misa seguia sin saltar. No era el refresco: era un fallo real.
+- Causa, comprobada contra los datos: el punto del mapa de la iglesia (-1541,1, 403,5) cae DENTRO del poligono de un bloque de 7 plantas (baldosa t_1_3; el poligono x[-1558,-1506] z[390,425] lo contiene). La colision mantiene al jugador a >=5 m y la deteccion de puerta (3,2 m) no saltaba jamas. Las pruebas anteriores no lo veian: la sonda y probar_capilla colocaban al jugador encima del punto SIN cargar los poligonos de esa baldosa.
+- Arreglo: puerta fija en la acera de Marques de Murrieta (-1541,1, 397,8), delante del portal, y el punto del mapa movido al mismo sitio (captura sm_ext mirada: pilar dorado y rotulo sobre la acera). _probar_capilla ahora construye las baldosas de la iglesia y exige la puerta en suelo pis able y la deteccion desde la acera: con la puerta antigua esa prueba FALLA.
+- Pasos, tercer ajuste (Jon: «mas suave todavia»): centroides 527/579/364 Hz, pico 0,34, volumen en juego -18 dB.
+- Verificacion: verificar 117 marcas OK, 0 FALLO. Captura temporal capturar_sm retirada antes de publicar.
+- Pendiente sin tocar: la bici Grajera de Decathlon sigue sin reproducirse; a la espera de la prueba de Jon (Ctrl+F5 y clic en el boton azul).
