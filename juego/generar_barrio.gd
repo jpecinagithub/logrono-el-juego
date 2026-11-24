@@ -21,6 +21,9 @@ var _t_alturas: Array = []
 
 # Colisiones: polígonos de edificio indexados en una rejilla de 25 m
 var _poligonos: Array = []
+# Huellas que no deben chocar: suelos deportivos que dibuja
+# su hito (Las Norias) y que el Catastro trae como edificio.
+var _polys_muertos := {}
 var _rejilla := {}
 const CELDA := 25.0
 
@@ -172,6 +175,8 @@ func _choca(p: Vector2, radio: float) -> bool:
 	var muestras := [p, p + Vector2(radio, 0), p - Vector2(radio, 0),
 		p + Vector2(0, radio), p - Vector2(0, radio)]
 	for idx in _rejilla[clave]:
+		if _polys_muertos.has(idx):
+			continue
 		var poly: PackedVector2Array = _poligonos[idx]
 		for m in muestras:
 			if Geometry2D.is_point_in_polygon(m, poly):
@@ -649,7 +654,11 @@ func _construir_edificios_tile(partes: Array, vigia: Node3D = null, inmediato :=
 					toyo_built = true
 					_toyo_ito(cj_e[0], cj_e[1], cj_e[2], cj_e[3], centro, base)
 			elif especial == 5:
-				pass  # suelo deportivo de Las Norias: lo dibuja su hito
+				# Suelo deportivo de Las Norias: lo dibuja su
+				# hito y NO es un edificio: su huella no puede
+				# chocar (tapaba las piscinas y las pistas con
+				# una pared invisible: ni andar ni nadar).
+				_polys_muertos[idx] = true
 			else:
 				_riojaforum(cj_e[0], cj_e[1], cj_e[2], cj_e[3], poly, centro, base, plantas)
 			continue
@@ -1761,6 +1770,20 @@ func _hito_franco(verts: PackedVector3Array, normals: PackedVector3Array, cols: 
 	for dx in [-4.5, 4.5]:
 		_caja_en(verts, normals, cols, Vector3(gx + 36.0 + dx, gy + 1.7, gz + 62.0), Vector3(0.85, 3.4, 0.85), piedra, 0.0)
 	_caja_en(verts, normals, cols, Vector3(gx + 36.0, gy + 3.75, gz + 62.0), Vector3(10.0, 0.7, 0.95), piedra, 0.0)
+	# El nombre de la bodega, en grande: sobre la viga de la
+	# puerta y coronando la fachada sur de la nave que hay tras
+	# ella (la de 2 plantas). Sin esto el complejo no tenia
+	# ningun cartel visible desde la calle (Jon, 2026-11-24).
+	_rotulos_tile_actual.append({"n": "Franco-Españolas", "h": Vector2(0, 1), "w": 9.4, "g": 2.0, "p": Vector3(gx + 36.0, gy + 3.75, gz + 62.0 + 0.58)})
+	var fn := Vector2(-0.22, 0.97)
+	var fx := gx + 30.1
+	var fz := gz + 44.0
+	var py := _altura(fx, fz)
+	var rot_f := atan2(fn.x, fn.y)
+	var vino := Color(0.30, 0.09, 0.15)
+	_caja_en(verts, normals, cols, Vector3(fx + fn.x * 0.16, py + 5.05, fz + fn.y * 0.16), Vector3(19.0, 1.6, 0.18), vino, rot_f)
+	_caja_en(verts, normals, cols, Vector3(fx + fn.x * 0.16, py + 5.90, fz + fn.y * 0.16), Vector3(19.0, 0.09, 0.20), Color(0.85, 0.88, 0.90), rot_f)
+	_rotulos_tile_actual.append({"n": "Bodegas Franco-Españolas", "h": fn, "w": 18.6, "g": 4.2, "p": Vector3(fx + fn.x * 0.35, py + 5.05, fz + fn.y * 0.35)})
 
 func _hito_puerta(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, gx: float, gz: float) -> void:
 	# La Puerta del Ebro: el gran marco de acero cortén de la ribera.
@@ -2546,7 +2569,19 @@ func _norias_gente() -> void:
 		raiz3.rotation.y = PI
 		_estaticos.append({"d": per, "raiz": raiz3, "tipo": "tenis", "fase": _rng.randf() * 6.0, "casa": raiz3.position, "eje": Vector2(1, 0), "amp": 1.8, "mira": PI})
 	var yp := _altura_terreno(-1155.0, -870.0)
-	for sp in [[-1175.0, -862.0, 0.0], [-1167.0, -858.0, 2.6], [-1159.0, -866.0, 0.4], [-1140.0, -900.0, 1.2], [-1160.0, -908.0, 5.5], [-1170.0, -896.0, 3.4], [-1135.0, -910.0, 2.2]]:
+	# En la piscina de calles, tres nadadores haciendo largos
+	# sin parar (Jon, 2026-11-24: «no veo a nadie nadando y
+	# haciendo largos»); un cuarto cruza la de recreo a ritmo
+	# tranquilo, y en esa los demas flotan.
+	for lg in [[-1171.7, -862.0, 0, 20.0, 1.15], [-1165.4, -862.0, 0, 20.0, 1.35], [-1159.2, -862.0, 0, 20.0, 1.25], [-1152.0, -904.0, 1, 22.0, 0.9]]:
+		var per := _persona_en(Vector3(lg[0], 0, lg[1]), Vector2.ZERO, camisas[k % 6], pelos[k % 6])
+		k += 1
+		var raizl: Node3D = per["raiz"]
+		raizl.position.y = yp + 0.44
+		raizl.rotation.x = 1.0
+		var eje_l := Vector2(1, 0) if int(lg[2]) == 1 else Vector2(0, 1)
+		_estaticos.append({"d": per, "raiz": raizl, "tipo": "largos", "fase": _rng.randf() * 6.0, "casa": raizl.position, "eje": eje_l, "amp": lg[3], "vel": lg[4]})
+	for sp in [[-1140.0, -900.0, 1.2], [-1160.0, -908.0, 5.5], [-1170.0, -896.0, 3.4], [-1135.0, -910.0, 2.2]]:
 		var per := _persona_en(Vector3(sp[0], 0, sp[1]), Vector2.ZERO, camisas[k % 6], pelos[k % 6])
 		k += 1
 		var raiz4: Node3D = per["raiz"]
@@ -4117,6 +4152,8 @@ var _pois_minimapa: Array = []
 var _asientos: Array = []
 var _sentado := false
 var _nadando := false
+var _vel_nado := Vector2.ZERO
+var _espuma_nado: MeshInstance3D = null
 var _varado_cd := 0.0
 var _aviso_banco_cd := 0.0
 var _btn_modo := "coche"
@@ -5827,6 +5864,11 @@ func _andar(delta: float) -> void:
 				else:
 					vel = frente * (10.2 if _corriendo else 6.0)
 			_atras_ant = atras
+	if _profundidad(Vector2(_jugador.position.x, _jugador.position.z)) > 0.08:
+		# Vadeando la orilla: el agua frena el paso y no se
+		# puede correr; cuando cubre (> 0,24) ya toca nadar.
+		vel *= 0.55
+		_corriendo = false
 	_mover(_jugador, vel * delta, 0.4)
 	var andando := vel.length() > 0.1
 	if andando:
@@ -5852,25 +5894,70 @@ func _andar(delta: float) -> void:
 		_jugador.rotation.y = lerp_angle(_jugador.rotation.y, _dir_jugador, clampf(delta * 10.0, 0.0, 1.0))
 	_animar_paso(delta, andando)
 
+func _crear_espuma_nado() -> void:
+	# El disco de espuma que rodea al nadador: un cilindro
+	# blanco semitransparente pegado a la superficie.
+	var cil := CylinderMesh.new()
+	cil.top_radius = 0.85
+	cil.bottom_radius = 0.85
+	cil.height = 0.04
+	cil.radial_segments = 20
+	_espuma_nado = MeshInstance3D.new()
+	_espuma_nado.mesh = cil
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.95, 0.98, 1.0, 0.38)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_espuma_nado.material_override = mat
+	_espuma_nado.visible = false
+	add_child(_espuma_nado)
+
+func _terminar_nado() -> void:
+	_nadando = false
+	_vel_nado = Vector2.ZERO
+	_jugador.rotation.x = 0.0
+	_jugador.rotation.z = 0.0
+	if _cabeza_j != null:
+		_cabeza_j.rotation.x = 0.0
+	if _codo_i != null:
+		_codo_i.rotation.x = 0.0
+	if _codo_d != null:
+		_codo_d.rotation.x = 0.0
+	if _rodilla_i != null:
+		_rodilla_i.rotation.x = 0.0
+	if _rodilla_d != null:
+		_rodilla_d.rotation.x = 0.0
+	if _espuma_nado != null:
+		_espuma_nado.visible = false
+	_jugador.position.y = _altura(_jugador.position.x, _jugador.position.z) + 0.95
+
 func _nadar(delta: float) -> void:
-	# A nado: despacio (1,7 m/s), el cuerpo inclinado y braceando.
-	# Al tocar fondo cerca de la orilla se sale andando solo.
+	# A nado de verdad (Jon, 2026-11-24: antes «la movilidad
+	# era muy rara» y no se notaba que nadaba): el cuerpo va
+	# casi horizontal braceando a crol, con impulso a tirones
+	# al ritmo de la brazada, balanceo del cuerpo, patada de
+	# tijera y la espuma alrededor. Se entra cuando el agua
+	# cubre (> 0,24 m) y se sale al hacer pie (< 0,16 m);
+	# entre medias se vadea andando (ver _andar).
 	var p := Vector2(_jugador.position.x, _jugador.position.z)
-	if not _agua_profunda(p):
-		_nadando = false
-		_jugador.rotation.x = 0.0
-		_jugador.position.y = _altura(_jugador.position.x, _jugador.position.z) + 0.95
+	# Se sale al hacer pie; y si esta ENCIMA de una estructura
+	# (el tablero de un puente), no debajo de ella: nadando
+	# se pasa bajo los puentes sin salir del agua.
+	if _profundidad(p) < 0.16 or (_altura(p.x, p.y) > _altura_terreno(p.x, p.y) + 0.05 and _jugador.position.y > _nivel_agua(p) + 1.2):
+		_terminar_nado()
 		return
-	var vel := Vector3.ZERO
+	if _espuma_nado == null:
+		_crear_espuma_nado()
 	var dir := Vector2.ZERO
 	if _joy_valor.length() > 0.15:
 		dir = _joy_valor
 	var pad_dir := Vector2(_pad_eje(JOY_AXIS_LEFT_X), _pad_eje(JOY_AXIS_LEFT_Y))
 	if pad_dir.length() > 0.2:
 		dir = pad_dir
+	var deseo := Vector2.ZERO
 	if dir.length() > 0.01:
-		vel = Vector3(dir.x, 0, dir.y).normalized() * 1.7
-		_dir_jugador = atan2(vel.x, vel.z)
+		deseo = dir.normalized()
+		_dir_jugador = atan2(deseo.x, deseo.y)
 	else:
 		var giro := float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT))
 		var adelante := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
@@ -5880,7 +5967,7 @@ func _nadar(delta: float) -> void:
 			_en_vuelta = false
 		if adelante:
 			_en_vuelta = false
-			vel = Vector3(sin(_dir_jugador), 0, cos(_dir_jugador)) * 1.7
+			deseo = Vector2(sin(_dir_jugador), cos(_dir_jugador))
 		elif atras:
 			# Tampoco se nada hacia atrás: media vuelta y a bracear.
 			if not _en_vuelta and not _atras_ant:
@@ -5892,31 +5979,71 @@ func _nadar(delta: float) -> void:
 				if absf(dif_v) < 0.08:
 					_en_vuelta = false
 			else:
-				vel = Vector3(sin(_dir_jugador), 0, cos(_dir_jugador)) * 1.7
+				deseo = Vector2(sin(_dir_jugador), cos(_dir_jugador))
 		_atras_ant = atras
-	var nueva := p + Vector2(vel.x, vel.z) * delta
+	var braceando := deseo.length() > 0.01
+	if braceando:
+		_fase_paso += delta * 5.2
+	# El impulso llega con cada brazada: avanza a tirones.
+	var impulso := 1.5 + 0.55 * maxf(0.0, sin(_fase_paso))
+	_vel_nado = _vel_nado.lerp(deseo * impulso, clampf(delta * 3.2, 0.0, 1.0))
+	var nueva := p + _vel_nado * delta
 	if not _choca(nueva, 0.4):
 		_jugador.position.x = nueva.x
 		_jugador.position.z = nueva.y
 	var na := _nivel_agua(Vector2(_jugador.position.x, _jugador.position.z))
 	if na < -100.0:
-		_nadando = false
-		_jugador.rotation.x = 0.0
-		_jugador.position.y = _altura(_jugador.position.x, _jugador.position.z) + 0.95
+		_terminar_nado()
 		return
-	_jugador.position.y = na + 0.30
+	_jugador.position.y = na + 0.26 + sin(_tiempo * 2.1) * 0.045
 	_jugador.rotation.y = lerp_angle(_jugador.rotation.y, _dir_jugador, clampf(delta * 10.0, 0.0, 1.0))
-	_jugador.rotation.x = 0.42
-	_fase_paso += delta * 4.5
-	_brazo_i.rotation.x = sin(_fase_paso) * 1.15
-	if _pan_en_mano:
-		# Con la barra en la mano, el brazo derecho va medio
-		# doblado y apenas se balancea.
-		_brazo_d.rotation.x = -0.55 + sin(_fase_paso + PI) * 0.15
+	var rapido := _vel_nado.length() > 0.35
+	# Braceando va tumbado; quieto, se mantiene a flote mas
+	# vertical, como quien se sostiene en el agua.
+	var incl_obj := 1.02 if rapido else 0.38
+	_jugador.rotation.x = lerp_angle(_jugador.rotation.x, incl_obj, clampf(delta * 4.0, 0.0, 1.0))
+	if rapido:
+		_jugador.rotation.z = sin(_fase_paso) * 0.09
+		_brazo_i.rotation.x = sin(_fase_paso) * 1.85
+		if _codo_i != null:
+			_codo_i.rotation.x = -0.30 - maxf(0.0, sin(_fase_paso - PI * 0.5)) * 0.85
+		if _pan_en_mano:
+			# Con la barra en la mano, el brazo derecho va medio
+			# doblado y apenas se balancea.
+			_brazo_d.rotation.x = -0.55 + sin(_fase_paso + PI) * 0.15
+			if _codo_d != null:
+				_codo_d.rotation.x = -0.9
+		else:
+			_brazo_d.rotation.x = sin(_fase_paso + PI) * 1.85
+			if _codo_d != null:
+				_codo_d.rotation.x = -0.30 - maxf(0.0, sin(_fase_paso + PI * 0.5)) * 0.85
+		_pierna_i.rotation.x = sin(_fase_paso * 2.0) * 0.38
+		_pierna_d.rotation.x = sin(_fase_paso * 2.0 + PI) * 0.38
+		if _rodilla_i != null:
+			_rodilla_i.rotation.x = 0.22 + maxf(0.0, -sin(_fase_paso * 2.0)) * 0.30
+		if _rodilla_d != null:
+			_rodilla_d.rotation.x = 0.22 + maxf(0.0, sin(_fase_paso * 2.0)) * 0.30
 	else:
-		_brazo_d.rotation.x = sin(_fase_paso + PI) * 1.15
-	_pierna_i.rotation.x = sin(_fase_paso * 1.7) * 0.35
-	_pierna_d.rotation.x = sin(_fase_paso * 1.7 + PI) * 0.35
+		_brazo_i.rotation.x = sin(_tiempo * 2.4) * 0.45
+		_brazo_d.rotation.x = sin(_tiempo * 2.4 + 0.6) * 0.45
+		if _codo_i != null:
+			_codo_i.rotation.x = -0.55
+		if _codo_d != null:
+			_codo_d.rotation.x = -0.55
+		_pierna_i.rotation.x = sin(_tiempo * 3.1) * 0.22
+		_pierna_d.rotation.x = sin(_tiempo * 3.1 + PI) * 0.22
+		if _rodilla_i != null:
+			_rodilla_i.rotation.x = 0.3
+		if _rodilla_d != null:
+			_rodilla_d.rotation.x = 0.3
+	if _cabeza_j != null:
+		# La cabeza fuera del agua, mirando al frente.
+		_cabeza_j.rotation.x = -0.52 if rapido else -0.12
+	_espuma_nado.visible = true
+	_espuma_nado.position = Vector3(_jugador.position.x, na + 0.33, _jugador.position.z)
+	_espuma_nado.rotation.y = _jugador.rotation.y
+	var esc := 1.0 + 0.10 * sin(_fase_paso)
+	_espuma_nado.scale = Vector3(esc * 0.85, 1.0, esc * 1.2)
 
 func _conducir(delta: float) -> void:
 	var acel := 0.0
@@ -8407,12 +8534,27 @@ func _crear_lineas_bus() -> void:
 	# calles y sus paradas tomadas de la red real (las que queden
 	# a menos de 60 m del trazado, ordenadas y sin apelotonar).
 	_lineas_bus.clear()
+	# Extremos SIEMPRE en rotonda (Jon, 2026-11-24: «cada
+	# linea debe empezar y terminar en una rotonda, para que
+	# el autobus no tenga que hacer cosas raras; esto es
+	# fundamental»): la primera y la ultima ancla de cada
+	# linea son el nodo antipoda de una rotonda real del
+	# grafo (la parada final cae en el lado opuesto a la
+	# entrada, asi el autobus gira rodeandola). De paso se
+	# quitaron las ramas que el senalo (la de la L1 junto a
+	# la UNIR y la de la L5 al este, salidas y vueltas por la
+	# misma callejuela) y dos anclas que forzaban rodeos:
+	# la de la L1 sobre la avenida (1500,480 -> 1482.5,542,
+	# un nodo de la propia avenida) y la de la L4 en
+	# (1700,-580), que obligaba a ir y volver por el mismo
+	# corredor del este; la L5 del sur se alarga hasta la
+	# rotonda de Los Cascajos porque El Cubo no tiene ninguna.
 	var defs: Array = [
-		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(2280, 700), Vector2(1500, 480), Vector2(700, 280), Vector2(0, 120), Vector2(-700, -20), Vector2(-1500, -300), Vector2(-2200, -550)]},
-		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-250, -1250), Vector2(-180, -600), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-450, 1800)]},
-		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-2350, 480), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(850, 230), Vector2(1650, 90), Vector2(2320, -80)]},
-		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1950, 1150), Vector2(-1150, 820), Vector2(-450, 520), Vector2(250, 180), Vector2(950, -220), Vector2(1700, -580), Vector2(2250, -850)]},
-		{"ext": "El Cubo — Cascajos", "c": Color(0.60, 0.35, 0.90), "anclas": [Vector2(1150, -1050), Vector2(1050, -450), Vector2(950, 150), Vector2(850, 750), Vector2(550, 1350), Vector2(250, 1850)]},
+		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(1960, 695), Vector2(1482.5, 542), Vector2(700, 280), Vector2(0, 120), Vector2(-700, -20), Vector2(-1500, -300), Vector2(-1800.5, -738)]},
+		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-161.5, -1003), Vector2(-180, -600), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-480.5, 1514.5)]},
+		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-2014, 533), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(850, 230), Vector2(1650, 90), Vector2(1986.5, 448.5)]},
+		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1926, 1275.5), Vector2(-1150, 820), Vector2(-450, 520), Vector2(250, 180), Vector2(950, -220), Vector2(2202.5, -600)]},
+		{"ext": "El Cubo — Cascajos", "c": Color(0.60, 0.35, 0.90), "anclas": [Vector2(1662.5, -1604), Vector2(1236.5, -1201), Vector2(950, 150), Vector2(850, 750), Vector2(550, 1350), Vector2(419, 1747)]},
 	]
 	for d in defs:
 		var pts: Array = []
@@ -9599,10 +9741,38 @@ func _crear_paseo() -> void:
 	add_child(_malla_de(verts, normals, cols, Color.WHITE))
 	print("PASEO_OK m=", int(largo), " bancos=", n_bancos, " farolas=", n_farolas)
 
+var _piscinas: Array = []
+var _piscinas_listas := false
+
+func _preparar_piscinas() -> void:
+	if _piscinas_listas:
+		return
+	_piscinas_listas = true
+	# Las dos piscinas grandes de Las Norias: la de largos
+	# (25x50, con sus calles dibujadas) y la de recreo de los
+	# toboganes. Su lamina es un suelo plano a terreno + 0,15;
+	# para nadar cuentan con profundidad de sobra.
+	var yp := _altura_terreno(-1155.0, -870.0)
+	_piscinas.append({"r": Rect2(-1179.5, -887.0, 25.0, 50.0), "n": yp + 0.15})
+	_piscinas.append({"r": Rect2(-1179.5, -916.0, 55.0, 28.0), "n": yp + 0.15})
+
+func _piscina_en(p: Vector2) -> float:
+	# El nivel de la lamina si el punto cae en una piscina;
+	# -1000 si no cae en ninguna.
+	_preparar_piscinas()
+	for pi in _piscinas:
+		if (pi["r"] as Rect2).has_point(p):
+			return float(pi["n"])
+	return -1000.0
+
 func _nivel_agua(p: Vector2) -> float:
-	# La superficie del Ebro sobre p: el nivel del eje del rio
-	# mas cercano + 0,35, como se dibuja la cinta. Devuelve
-	# -1000 si p esta fuera de la cinta (a mas de 33 m del eje).
+	# La superficie del agua sobre p: la lamina de una
+	# piscina de Las Norias si cae dentro, o la del Ebro
+	# (el nivel del eje del rio mas cercano + 0,35, como se
+	# dibuja la cinta). Devuelve -1000 si no hay agua.
+	var np := _piscina_en(p)
+	if np > -500.0:
+		return np
 	_preparar_rio()
 	var mejor := 1.0e9
 	var centro := Vector2.ZERO
@@ -9622,14 +9792,138 @@ func _nivel_agua(p: Vector2) -> float:
 		return -1000.0
 	return _altura_terreno(centro.x, centro.y) + 0.35
 
+func _profundidad(p: Vector2) -> float:
+	# Cuanto cubre el agua en un punto: el nivel del rio
+	# (terreno del eje + 0,35) menos el fondo en ese punto.
+	# En las orillas y las barras de grava que quedan por
+	# encima del nivel, sale cero o negativo: ahi se hace pie.
+	# En una piscina siempre cubre (1,4 m de sobra).
+	if _piscina_en(p) > -500.0:
+		return 1.4
+	if _nivel_agua(p) < -100.0:
+		return -1.0
+	return _nivel_agua(p) - _altura_terreno(p.x, p.y)
+
 func _agua_profunda(p: Vector2) -> bool:
-	# Agua de verdad: estas dentro de la cinta del rio y NO
-	# sobre un puente (en el tablero, _altura sube por encima
-	# del terreno). La cinta se dibuja pegada al terreno, asi
-	# que no hay una cota de agua separada que comparar.
+	# Agua que cubre de verdad: mas de 0,24 m sobre el fondo,
+	# lo bastante para nadar y para que un coche se cale.
+	# Sobre un puente la altura solida supera al terreno y
+	# nunca cuenta como agua.
 	if _nivel_agua(p) < -100.0:
 		return false
-	return _altura(p.x, p.y) <= _altura_terreno(p.x, p.y) + 0.05
+	if _altura(p.x, p.y) > _altura_terreno(p.x, p.y) + 0.05:
+		return false
+	return _profundidad(p) > 0.24
+
+var _piraguas: Array = []
+var _piragua_ruta: Array = []
+var _piragua_lens: Array = []
+var _piragua_total := 0.0
+
+func _preparar_piraguas() -> void:
+	# Dos piraguistas en el Ebro (Jon, 2026-11-24): su
+	# circuito va del Puente de Piedra al de Hierro, bajando
+	# por la orilla sur y subiendo por la norte, remando con
+	# el remo de doble pala. La animacion vive en
+	# _mover_peatones.
+	if not _piraguas.is_empty():
+		return
+	_preparar_rio()
+	# El circuito se traza por distancia sobre el eje del
+	# rio, parando 35 m antes de cada puente: remar entre
+	# los puentes, no bajo sus tableros (el tablero queda a
+	# ras del agua y la piragua se veria encima de la calzada).
+	var d_piedra := 0.0
+	var d_hierro := 0.0
+	var s_ac := 0.0
+	var bd_p := 1.0e9
+	var bd_h := 1.0e9
+	for i in _rio_pts.size():
+		if i > 0:
+			s_ac += (_rio_pts[i] as Vector2).distance_to(_rio_pts[i - 1])
+		var p: Vector2 = _rio_pts[i]
+		var dp := p.distance_to(Vector2(-89, -361))
+		if dp < bd_p:
+			bd_p = dp
+			d_piedra = s_ac
+		var dh := p.distance_to(Vector2(-352, -427))
+		if dh < bd_h:
+			bd_h = dh
+			d_hierro = s_ac
+	var d0 := minf(d_piedra, d_hierro) + 35.0
+	var d1 := maxf(d_piedra, d_hierro) - 35.0
+	# Que lateral cae al sur (la orilla de la ciudad)
+	var lat_sur := 7.0
+	if _punto_en_rio((d0 + d1) / 2.0, -7.0).y > _punto_en_rio((d0 + d1) / 2.0, 7.0).y:
+		lat_sur = -7.0
+	_piragua_ruta = []
+	var d := d0
+	while d < d1:
+		_piragua_ruta.append(_punto_en_rio(d, lat_sur))
+		d += 25.0
+	_piragua_ruta.append(_punto_en_rio(d1, lat_sur))
+	d = d1
+	while d > d0:
+		_piragua_ruta.append(_punto_en_rio(d, -lat_sur))
+		d -= 25.0
+	_piragua_ruta.append(_punto_en_rio(d0, -lat_sur))
+	_piragua_lens = [0.0]
+	for i in range(1, _piragua_ruta.size()):
+		_piragua_lens.append(float(_piragua_lens[i - 1]) + (_piragua_ruta[i] as Vector2).distance_to(_piragua_ruta[i - 1]))
+	_piragua_total = float(_piragua_lens[_piragua_lens.size() - 1]) + (_piragua_ruta[0] as Vector2).distance_to(_piragua_ruta[_piragua_ruta.size() - 1])
+	var cols_k := [[Color(0.85, 0.22, 0.16), Color(0.95, 0.55, 0.10)], [Color(0.95, 0.78, 0.15), Color(0.15, 0.35, 0.75)]]
+	for k in 2:
+		_piraguas.append(_hacer_piragua(cols_k[k][0], cols_k[k][1], float(k) * _piragua_total / 2.0))
+
+func _piragua_en(s: float) -> Vector2:
+	if _piragua_ruta.is_empty():
+		return Vector2.ZERO
+	var ss := fmod(s, _piragua_total)
+	var i := 0
+	while i < _piragua_lens.size() - 1 and float(_piragua_lens[i + 1]) < ss:
+		i += 1
+	var p0: Vector2 = _piragua_ruta[i]
+	var p1: Vector2 = _piragua_ruta[(i + 1) % _piragua_ruta.size()]
+	var seg := p0.distance_to(p1)
+	if seg < 0.01:
+		return p0
+	return p0.lerp(p1, (ss - float(_piragua_lens[i])) / seg)
+
+func _hacer_piragua(col_casco: Color, col_chaleco: Color, s0: float) -> Dictionary:
+	var grupo := Node3D.new()
+	add_child(grupo)
+	# El casco: largo y estrecho, con la proa y la popa
+	# levantadas y la bañera oscura en el centro.
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var c := PackedColorArray()
+	_caja_en(v, n, c, Vector3(0, 0.10, 0), Vector3(0.55, 0.20, 3.1), col_casco, 0.0)
+	_caja_en(v, n, c, Vector3(0, 0.16, 1.72), Vector3(0.40, 0.16, 0.45), col_casco, 0.0)
+	_caja_en(v, n, c, Vector3(0, 0.16, -1.72), Vector3(0.40, 0.16, 0.45), col_casco, 0.0)
+	_caja_en(v, n, c, Vector3(0, 0.215, -0.1), Vector3(0.46, 0.05, 0.95), col_casco.darkened(0.35), 0.0)
+	grupo.add_child(_malla_de(v, n, c, Color.WHITE))
+	# El palista, sentado con las piernas dentro del casco.
+	var per := _persona_en(Vector3(-220, 0, -395), Vector2.ZERO, col_chaleco, Color(0.16, 0.11, 0.07))
+	var raiz: Node3D = per["raiz"]
+	raiz.get_parent().remove_child(raiz)
+	grupo.add_child(raiz)
+	raiz.position = Vector3(0, 0.26, -0.15)
+	raiz.rotation = Vector3.ZERO
+	(per["pi"] as Node3D).rotation.x = -1.45
+	(per["pd"] as Node3D).rotation.x = -1.45
+	# El remo de doble pala, en un pivote a la altura de las
+	# manos para poder balancearlo a un lado y a otro.
+	var piv := Node3D.new()
+	piv.position = Vector3(0, 0.80, 0.28)
+	grupo.add_child(piv)
+	var v2 := PackedVector3Array()
+	var n2 := PackedVector3Array()
+	var c2 := PackedColorArray()
+	_caja_en(v2, n2, c2, Vector3(0, 0, 0), Vector3(2.3, 0.045, 0.045), Color(0.75, 0.72, 0.68), 0.0)
+	_caja_en(v2, n2, c2, Vector3(-1.22, 0, 0), Vector3(0.30, 0.02, 0.55), col_casco, 0.0)
+	_caja_en(v2, n2, c2, Vector3(1.22, 0, 0), Vector3(0.30, 0.02, 0.55), col_casco, 0.0)
+	piv.add_child(_malla_de(v2, n2, c2, Color.WHITE))
+	return {"grupo": grupo, "d": per, "remo": piv, "s": s0, "vel": 2.1, "fase": _rng.randf() * 6.0}
 
 func _preparar_rio() -> void:
 	if not _rio_pts.is_empty():
@@ -11078,6 +11372,112 @@ func _probar_agua() -> void:
 	print("AGUA_PRUEBA_OK pasa=", ok)
 	get_tree().quit()
 
+func _probar_nadar() -> void:
+	_preparar_rio()
+	var ok := true
+	# El canal norte del Puente de Hierro cubre de verdad
+	# (medido junto al puente, no bajo su tablero).
+	if _profundidad(Vector2(-340.0, -400.0)) < 0.5:
+		ok = false
+		print("NADAR_FALLO profundidad del canal ", _profundidad(Vector2(-340.0, -400.0)))
+	if not _agua_profunda(Vector2(-340.0, -400.0)):
+		ok = false
+		print("NADAR_FALLO el canal no cuenta como profundo")
+	# La barra de grava del sur se vadea, no se nada.
+	if _agua_profunda(Vector2(-352.0, -444.0)):
+		ok = false
+		print("NADAR_FALLO la barra de grava cuenta como profunda")
+	# Nadando hacia el oeste se avanza, tumbado y sin salirse.
+	if not _agua_profunda(Vector2(-300.0, -402.0)):
+		ok = false
+		print("NADAR_FALLO el punto del rio no es profundo ", _profundidad(Vector2(-300.0, -402.0)))
+	_jugador.position = Vector3(-300.0, _nivel_agua(Vector2(-300.0, -402.0)) + 0.30, -402.0)
+	_nadando = true
+	_joy_valor = Vector2(-1, 0)
+	var x0 := _jugador.position.x
+	for i in 90:
+		_nadar(1.0 / 30.0)
+		_tiempo += 1.0 / 30.0
+	_joy_valor = Vector2.ZERO
+	if _jugador.position.x > x0 - 2.0:
+		ok = false
+		print("NADAR_FALLO no avanza ", x0, " -> ", _jugador.position.x)
+	if not _nadando:
+		ok = false
+		print("NADAR_FALLO salio del agua en pleno canal")
+	if _jugador.rotation.x < 0.7:
+		ok = false
+		print("NADAR_FALLO no va tumbado ", _jugador.rotation.x)
+	# Al hacer pie en la barra sale andando solo.
+	_jugador.position = Vector3(-352.0, _altura(-352.0, -444.0) + 0.95, -444.0)
+	_nadar(1.0 / 30.0)
+	if _nadando:
+		ok = false
+		print("NADAR_FALLO no sale al hacer pie")
+	# La piscina de Las Norias tambien es agua nadable.
+	_construir_tile(_tile_de(Vector2(-1167, -862)))
+	if not _agua_profunda(Vector2(-1167.0, -862.0)):
+		ok = false
+		print("NADAR_FALLO la piscina no cuenta como agua")
+	_jugador.position = Vector3(-1167.0, _nivel_agua(Vector2(-1167.0, -862.0)) + 0.30, -878.0)
+	_nadando = true
+	_joy_valor = Vector2(0, -1)
+	var z0 := _jugador.position.z
+	for i in 60:
+		_nadar(1.0 / 30.0)
+		_tiempo += 1.0 / 30.0
+	_joy_valor = Vector2.ZERO
+	if _jugador.position.z > z0 - 1.2:
+		ok = false
+		print("NADAR_FALLO no avanza en la piscina ", z0, " -> ", _jugador.position.z)
+	if not _nadando:
+		ok = false
+		print("NADAR_FALLO salio de la piscina a mitad")
+	# Y al pisar la playa de la piscina, andando otra vez.
+	_jugador.position = Vector3(-1167.0, _altura(-1167.0, -830.0) + 0.95, -830.0)
+	_nadar(1.0 / 30.0)
+	if _nadando:
+		ok = false
+		print("NADAR_FALLO no sale al salir de la piscina")
+	# Hay nadadores haciendo largos en las piscinas.
+	var n_largos := 0
+	for est in _estaticos:
+		if String(est.get("tipo", "")) == "largos":
+			n_largos += 1
+	if n_largos < 4:
+		ok = false
+		print("NADAR_FALLO faltan nadadores de largos ", n_largos)
+	if ok:
+		print("NADAR_OK largos=", n_largos)
+
+func _probar_piraguas() -> void:
+	_preparar_piraguas()
+	var ok := true
+	if _piraguas.size() != 2:
+		ok = false
+		print("PIRAGUAS_FALLO n=", _piraguas.size())
+	if _piragua_total < 400.0:
+		ok = false
+		print("PIRAGUAS_FALLO circuito corto ", _piragua_total)
+	_jugador.position = Vector3(-220, _altura(-220, -380) + 0.95, -380)
+	var antes: Array = []
+	for pg in _piraguas:
+		antes.append((pg["grupo"] as Node3D).position)
+	for i in 40:
+		_mover_peatones(0.1)
+		_tiempo += 0.1
+	for k in _piraguas.size():
+		var pg: Dictionary = _piraguas[k]
+		var ahora: Vector3 = (pg["grupo"] as Node3D).position
+		if ahora.distance_to(antes[k]) < 0.5:
+			ok = false
+			print("PIRAGUAS_FALLO la piragua ", k, " no se mueve ", antes[k], " -> ", ahora)
+		if ahora.x < -420.0 or ahora.x > -20.0 or _nivel_agua(Vector2(ahora.x, ahora.z)) < -100.0:
+			ok = false
+			print("PIRAGUAS_FALLO la piragua ", k, " fuera del rio ", ahora)
+	if ok:
+		print("PIRAGUAS_OK circuito=", int(_piragua_total))
+
 func _probar_carreras() -> void:
 	_records = {}
 	_mis_coches[_coche_activo]["danio"] = 0
@@ -11960,6 +12360,33 @@ func _mover_peatones(delta: float) -> void:
 				(d2["bi"] as Node3D).rotation.x = sin(_tiempo * 1.4 + f2) * 0.95
 				(d2["bd"] as Node3D).rotation.x = sin(_tiempo * 1.4 + f2 + PI) * 0.95
 				cab_e.rotation.x = -0.18
+			"largos":
+				# Haciendo largos en su calle: va y viene a
+				# ritmo constante braceando a crol, y al
+				# final de la calle se da la vuelta.
+				var casa_l: Vector3 = est["casa"]
+				var eje_l: Vector2 = est["eje"]
+				var amp_l := float(est.get("amp", 20.0))
+				var s_l := fmod(_tiempo * float(est.get("vel", 1.2)) + f2 * 11.0, 4.0 * amp_l)
+				var desp_l := 0.0
+				var sentido_l := 1.0
+				if s_l < 2.0 * amp_l:
+					desp_l = -amp_l + s_l
+				else:
+					desp_l = amp_l - (s_l - 2.0 * amp_l)
+					sentido_l = -1.0
+				raiz_e.position.x = casa_l.x + eje_l.x * desp_l
+				raiz_e.position.z = casa_l.z + eje_l.y * desp_l
+				raiz_e.position.y = float(est["y0"]) + sin(_tiempo * 2.1 + f2) * 0.04
+				var mira_l := atan2(eje_l.x * sentido_l, eje_l.y * sentido_l)
+				raiz_e.rotation.y = lerp_angle(raiz_e.rotation.y, mira_l, clampf(delta * 5.0, 0.0, 1.0))
+				var fb_l := _tiempo * 5.0 + f2 * 3.0
+				(d2["bi"] as Node3D).rotation.x = sin(fb_l) * 1.8
+				(d2["bd"] as Node3D).rotation.x = sin(fb_l + PI) * 1.8
+				(d2["pi"] as Node3D).rotation.x = sin(fb_l * 2.0) * 0.35
+				(d2["pd"] as Node3D).rotation.x = sin(fb_l * 2.0 + PI) * 0.35
+				cab_e.rotation.x = -0.5
+				raiz_e.rotation.z = sin(fb_l) * 0.08
 			"escalar":
 				raiz_e.position.y = float(est["y0"]) + (sin(_tiempo * 0.22 + f2) * 0.5 + 0.5) * float(est.get("sube", 1.8))
 				(d2["bi"] as Node3D).rotation.x = -2.5 + sin(_tiempo * 0.9 + f2) * 0.25
@@ -12103,6 +12530,38 @@ func _mover_peatones(delta: float) -> void:
 		var aleteo := sin(_tiempo * 9.0 + float(ave["fase"])) * 0.55
 		(ave["ai"] as Node3D).rotation.z = aleteo
 		(ave["ad"] as Node3D).rotation.z = -aleteo
+	# Los piraguistas del Ebro: su circuito entre el Puente
+	# de Piedra y el de Hierro, remando sin parar con el
+	# remo de doble pala (se balancea a un lado y a otro y
+	# los brazos le siguen).
+	if _piraguas.is_empty():
+		_preparar_piraguas()
+	for pg in _piraguas:
+		var grupo: Node3D = pg["grupo"]
+		var centro_k := _piragua_en(float(pg["s"]))
+		if _jugador != null and Vector2(_jugador.position.x, _jugador.position.z).distance_to(centro_k) > 300.0:
+			grupo.visible = false
+			continue
+		grupo.visible = true
+		pg["s"] = fmod(float(pg["s"]) + float(pg["vel"]) * delta, _piragua_total)
+		var pos_k := _piragua_en(float(pg["s"]))
+		var pos_k2 := _piragua_en(float(pg["s"]) + 2.0)
+		var dir_k := pos_k2 - pos_k
+		grupo.position = Vector3(pos_k.x, _nivel_agua(pos_k) + 0.05 + sin(_tiempo * 1.7 + float(pg["fase"])) * 0.03, pos_k.y)
+		if dir_k.length() > 0.01:
+			grupo.rotation.y = lerp_angle(grupo.rotation.y, atan2(dir_k.x, dir_k.y), clampf(delta * 3.0, 0.0, 1.0))
+		var f_r := _tiempo * 5.4 + float(pg["fase"])
+		grupo.rotation.z = sin(f_r) * 0.06
+		var remo: Node3D = pg["remo"]
+		remo.rotation.z = sin(f_r) * 0.52
+		remo.rotation.x = sin(f_r) * 0.10
+		var dk: Dictionary = pg["d"]
+		(dk["bi"] as Node3D).rotation.x = -0.85 + sin(f_r) * 0.22
+		(dk["bd"] as Node3D).rotation.x = -0.85 + sin(f_r + PI) * 0.22
+		if dk.get("ci") != null:
+			(dk["ci"] as Node3D).rotation.x = -0.35
+		if dk.get("cd") != null:
+			(dk["cd"] as Node3D).rotation.x = -0.35
 
 func _cruce_seg(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> Vector2:
 	var r := b - a
@@ -12697,7 +13156,11 @@ func _crear_colegios() -> void:
 			var fdir := Vector2(-fn.y, fn.x)
 			var fgy := _altura_terreno(fx, fz)
 			var ancho_f := clampf(float(nombre_col.length()) * 0.30, 6.0, 12.0)
-			var alto_f := clampf(float(fa["plantas"]) * 1.65, 2.0, 3.6)
+			# El cartel corona la fachada: su centro va justo
+			# bajo la cornisa (plantas x 3 m menos el medio
+			# panel), no a media pared — en los campus grandes
+			# a media altura no se veia (Alcaste, Jon 2026-11-24).
+			var alto_f := clampf(float(fa["plantas"]) * M_POR_PLANTA - 0.75, 2.0, 40.0)
 			var rot_f := atan2(-fdir.y, fdir.x)
 			var cen_f := Vector2(fx, fz) + fn * 0.18
 			_caja_en(verts, normals, cols, Vector3(cen_f.x, fgy + alto_f, cen_f.y), Vector3(ancho_f, 1.1, 0.12), Color(0.14, 0.31, 0.53), rot_f)
@@ -13302,16 +13765,17 @@ func _capturar_si_toca() -> void:
 			_cam.look_at_from_position(Vector3(gp.x + gn.x * 8.5, gp.y + 2.0, gp.z + gn.y * 8.5), Vector3(gp.x, gp.y + 2.3, gp.z), Vector3.UP)
 		nombre = "colegio.png"
 	elif args.has("capturar_alcaste"):
-		# La fachada del edificio principal de Alcaste con su
-		# nombre en grande (el campus es enorme y la puerta
-		# queda a 157 m: sin esto no se veia cartel alguno).
+		# El cartel de Alcaste corona la fachada sur de su
+		# edificio principal (3 plantas): camara desde el
+		# campus, a la altura del letrero, para comprobar que
+		# se lee desde el sur como pidio Jon.
 		for dt in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]:
-			_construir_tile(_tile_de(Vector2(-680, -1373)) + dt)
-		var fn_a := Vector2(-0.80, -0.59)
-		var fp_a := Vector2(-680.3, -1373.0)
-		_jugador.position = Vector3(fp_a.x + fn_a.x * 15.0, _altura(fp_a.x + fn_a.x * 15.0, fp_a.y + fn_a.y * 15.0) + 0.95, fp_a.y + fn_a.y * 15.0)
+			_construir_tile(_tile_de(Vector2(-661, -1448)) + dt)
+		var fn_a := Vector2(-0.56, 0.83)
+		var fp_a := Vector2(-661.2, -1448.4)
+		_jugador.position = Vector3(fp_a.x + fn_a.x * 22.0, _altura(fp_a.x + fn_a.x * 22.0, fp_a.y + fn_a.y * 22.0) + 0.95, fp_a.y + fn_a.y * 22.0)
 		_refrescar_rotulos()
-		_cam.look_at_from_position(Vector3(fp_a.x + fn_a.x * 16.5, _altura(fp_a.x, fp_a.y) + 3.4, fp_a.y + fn_a.y * 16.5), Vector3(fp_a.x, _altura(fp_a.x, fp_a.y) + 2.6, fp_a.y), Vector3.UP)
+		_cam.look_at_from_position(Vector3(fp_a.x + fn_a.x * 27.0, _altura(fp_a.x, fp_a.y) + 9.4, fp_a.y + fn_a.y * 27.0), Vector3(fp_a.x, _altura(fp_a.x, fp_a.y) + 7.9, fp_a.y), Vector3.UP)
 		nombre = "alcaste.png"
 	elif args.has("capturar_vuelo"):
 		# Vuelo Madrid Manila desde la avenida Republica
@@ -13705,6 +14169,10 @@ func _capturar_si_toca() -> void:
 		_probar_carreras()
 	elif args.has("probar_agua"):
 		_probar_agua()
+	elif args.has("probar_nadar"):
+		_probar_nadar()
+	elif args.has("probar_piraguas"):
+		_probar_piraguas()
 	elif args.has("probar_bici"):
 		_probar_bici()
 	elif args.has("probar_coche"):
@@ -13977,12 +14445,59 @@ func _capturar_si_toca() -> void:
 		_cam.look_at_from_position(Vector3(-236.0, _altura(-236.0, -398.0) + 3.0, -398.0), Vector3(-236.0, _altura(-236.0, -448.0) + 7.0, -448.0), Vector3.UP)
 		nombre = "casa.png"
 	elif args.has("capturar_franco"):
-		# Franco-Españolas y su chimenea desde el sureste
+		# Franco-Españolas: su puerta y el cartel nuevo de la
+		# nave, desde el sureste y cerca (el jugador va alli
+		# para que los rotulos se activen).
 		for dx in [-1, 0, 1]:
 			for dy in [-1, 0, 1]:
 				_construir_tile(_tile_de(Vector2(-360, -555)) + Vector2i(dx, dy))
-		_cam.look_at_from_position(Vector3(-318.0, _altura(-318.0, -478.0) + 11.0, -478.0), Vector3(-362.0, _altura(-362.0, -558.0) + 7.0, -558.0), Vector3.UP)
+		_jugador.position = Vector3(-336.0, _altura(-336.0, -486.0) + 0.95, -486.0)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(-324.0, _altura(-324.0, -484.0) + 7.5, -484.0), Vector3(-360.0, _altura(-360.0, -538.0) + 4.6, -538.0), Vector3.UP)
 		nombre = "franco.png"
+	elif args.has("capturar_nadar"):
+		# El jugador nadando a crol en el Ebro, entre los dos
+		# puentes: se le deja bracear un par de segundos y se
+		# le mira de lado desde la orilla sur.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(-300, -402)) + Vector2i(dx, dy))
+		_jugador.position = Vector3(-294.0, _nivel_agua(Vector2(-294.0, -402.0)) + 0.30, -402.0)
+		_nadando = true
+		_joy_valor = Vector2(-1, 0)
+		for i in 50:
+			_nadar(1.0 / 30.0)
+			_tiempo += 1.0 / 30.0
+		_joy_valor = Vector2.ZERO
+		var na_n := _nivel_agua(Vector2(_jugador.position.x, _jugador.position.z))
+		_cam.look_at_from_position(Vector3(_jugador.position.x + 3.0, na_n + 1.7, _jugador.position.z + 9.0), Vector3(_jugador.position.x, na_n + 0.3, _jugador.position.z), Vector3.UP)
+		nombre = "nadar.png"
+	elif args.has("capturar_piscina"):
+		# La piscina de largos de Las Norias con sus
+		# nadadores en las calles, desde el sureste.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(-1167, -862)) + Vector2i(dx, dy))
+		_tiempo = 41.0
+		for i in 6:
+			_mover_peatones(0.1)
+		var yp2 := _altura_terreno(-1155.0, -870.0)
+		_cam.look_at_from_position(Vector3(-1146.0, yp2 + 7.0, -826.0), Vector3(-1167.0, yp2 + 0.3, -866.0), Vector3.UP)
+		nombre = "piscina.png"
+	elif args.has("capturar_piraguas"):
+		# Los piraguistas entre los dos puentes, vistos desde
+		# el Puente de Piedra hacia el de Hierro.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(-220, -395)) + Vector2i(dx, dy))
+		_jugador.position = Vector3(-150.0, _altura(-150.0, -370.0) + 0.95, -370.0)
+		_preparar_piraguas()
+		_tiempo = 25.0
+		for i in 10:
+			_mover_peatones(0.1)
+		var pos_pg: Vector3 = (_piraguas[0]["grupo"] as Node3D).position
+		_cam.look_at_from_position(pos_pg + Vector3(6.5, 1.9, 5.0), pos_pg + Vector3(0, 0.5, 0), Vector3.UP)
+		nombre = "piraguas.png"
 	elif args.has("capturar_puerta"):
 		# La Puerta del Ebro desde la ribera
 		for dx in [-1, 0, 1]:
@@ -14564,6 +15079,20 @@ func _capturar_si_toca() -> void:
 		_aceptar_trabajo(0)
 		_abrir_mapa()
 		nombre = "mapa.png"
+	elif args.has("capturar_mapa_unir"):
+		_aceptar_trabajo(0)
+		_abrir_mapa()
+		_mapa.set("_zoom", 3.0)
+		_mapa.set("_centro", Vector2(1500, 500))
+		_mapa.queue_redraw()
+		nombre = "mapa_unir.png"
+	elif args.has("capturar_mapa_l5"):
+		_aceptar_trabajo(0)
+		_abrir_mapa()
+		_mapa.set("_zoom", 3.0)
+		_mapa.set("_centro", Vector2(1000, -300))
+		_mapa.queue_redraw()
+		nombre = "mapa_l5.png"
 	elif args.has("capturar_pilar"):
 		_aceptar_trabajo(0)
 		var pp := _jugador.position

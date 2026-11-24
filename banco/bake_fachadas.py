@@ -128,6 +128,14 @@ OVERRIDES = {
     "Colegio Vuelo Madrid Manila": {"x": -661.9, "z": 940.5,
                                     "nx": -0.29, "nz": 0.96,
                                     "plantas": 1},
+    # Alcaste: la regla de mayor superficie elegia un pabellon
+    # bajo de 1 planta en mitad del campus y el cartel no se
+    # veia (senalado por Jon el 2026-11-24). Su edificio
+    # principal es el de 3 plantas (-667,-1459); se usa su
+    # arista sur mas adelantada, la que mira al campus.
+    "Colegio Alcaste": {"x": -661.2, "z": -1448.4,
+                        "nx": -0.56, "nz": 0.83,
+                        "plantas": 3},
 }
 for i, col in enumerate(colegios):
     if col["n"] in OVERRIDES:
