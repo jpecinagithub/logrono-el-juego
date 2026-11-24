@@ -3597,34 +3597,37 @@ func _camara_y_luz() -> void:
 	add_child(_cam)
 	_cam.current = true
 	var sol := DirectionalLight3D.new()
-	sol.rotation_degrees = Vector3(-24, -118, 0)
-	sol.light_color = Color(1.0, 0.72, 0.47)
-	sol.light_energy = 1.25
+	sol.rotation_degrees = Vector3(-50, -118, 0)
+	sol.light_color = Color(1.0, 0.97, 0.92)
+	sol.light_energy = 1.15
 	sol.shadow_enabled = true
 	sol.directional_shadow_max_distance = 350.0
 	add_child(sol)
 	var entorno := WorldEnvironment.new()
 	var env := Environment.new()
-	# Atardecer: cielo procedural cálido, ambiente fijo cálido y niebla
-	# ligera del mismo tono (Fase 4).
+	# Día limpio (Tanda 12, paquete de acabado): cielo azul con el
+	# horizonte pálido, ambiente neutro y niebla azul grisácea muy
+	# ligera. Antes era un atardecer naranja permanente que teñía
+	# toda la ciudad (Fase 4).
 	env.background_mode = Environment.BG_SKY
 	var mat_cielo := ProceduralSkyMaterial.new()
-	mat_cielo.sky_top_color = Color(0.22, 0.38, 0.66)
-	mat_cielo.sky_horizon_color = Color(0.99, 0.62, 0.36)
-	mat_cielo.ground_bottom_color = Color(0.24, 0.18, 0.16)
-	mat_cielo.ground_horizon_color = Color(0.85, 0.52, 0.34)
-	mat_cielo.sun_angle_max = 12.0
+	mat_cielo.sky_top_color = Color(0.25, 0.50, 0.85)
+	mat_cielo.sky_horizon_color = Color(0.78, 0.87, 0.95)
+	mat_cielo.ground_bottom_color = Color(0.35, 0.36, 0.38)
+	mat_cielo.ground_horizon_color = Color(0.72, 0.78, 0.84)
+	mat_cielo.sun_angle_max = 30.0
 	var cielo := Sky.new()
 	cielo.sky_material = mat_cielo
 	env.sky = cielo
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.85, 0.72, 0.60)
-	env.ambient_light_energy = 0.85
+	env.ambient_light_color = Color(0.72, 0.78, 0.88)
+	env.ambient_light_energy = 0.7
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.97, 0.71, 0.54)
+	env.fog_light_color = Color(0.80, 0.86, 0.92)
 	env.fog_density = 0.00032
 	entorno.environment = env
 	add_child(entorno)
+	_nubes()
 	# Interfaz en pantalla: pastilla de calle, teléfono, minimapa,
 	# píldora de distancia, botón de subir/bajar y banner del encargo
 	var capa := CanvasLayer.new()
@@ -3632,6 +3635,36 @@ func _camara_y_luz() -> void:
 	_crear_hud(capa)
 	_actualizar_hud_dinero()
 	_actualizar_hud()
+
+func _nubes() -> void:
+	# Nubes del día limpio: 16 láminas grandes y suaves a 300-380 m
+	# de altura con la textura nubes.png (manchas blancas difusas).
+	# Sin sombreado y sin escribir profundidad: se ven como nubes
+	# lejanas desde cualquier calle. Semilla fija: siempre las
+	# mismas, para que las capturas sean comparables.
+	var tex_n := load("res://nubes.png") as Texture2D
+	if tex_n == null:
+		return
+	var mat_n := StandardMaterial3D.new()
+	mat_n.albedo_texture = tex_n
+	mat_n.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat_n.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat_n.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Billboard: la lámina mira siempre a la cámara. Tumbada en
+	# horizontal se veía de canto desde la calle: dos rayas
+	# blancas en vez de nubes (primera captura de la tanda).
+	mat_n.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	var rng_n := RandomNumberGenerator.new()
+	rng_n.seed = 20261124
+	for i in 16:
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		var ancho_n := rng_n.randf_range(260.0, 560.0)
+		qm.size = Vector2(ancho_n, ancho_n * 0.5)
+		qm.material = mat_n
+		q.mesh = qm
+		q.position = Vector3(rng_n.randf_range(-2900.0, 2900.0), rng_n.randf_range(300.0, 380.0), rng_n.randf_range(-2200.0, 2200.0))
+		add_child(q)
 
 func _estilo_caja(color: Color, radio: int, borde := 0, col_borde := Color(1, 1, 1)) -> StyleBoxFlat:
 	var e := StyleBoxFlat.new()
