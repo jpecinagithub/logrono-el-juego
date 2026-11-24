@@ -83,6 +83,7 @@ var _vista_aerea := false
 var _modo_libre := true
 # Interfaz tipo «layout de móvil»: minimapa, teléfono, banner de encargo
 var _minimapa: Control = null
+var _pill_calle: PanelContainer = null
 var _banner: PanelContainer = null
 var _banner_texto: Label = null
 var _banner_hasta := -1.0
@@ -3194,6 +3195,7 @@ func _actualizar_tiles() -> void:
 				nodo.queue_free()
 			_tiles.erase(clave)
 			_rotulos_datos.erase(clave)
+			_rotulos_datos.erase(clave + "|pois")
 
 func _procesar_tiles(delta: float) -> void:
 	if _en_interior != "":
@@ -3966,10 +3968,26 @@ func _refrescar_rotulos() -> void:
 			break
 		orden.append(pc)
 		np += 1
+	var aceptados: Array = []
 	for c in orden:
 		if hechos >= 64:
 			break
 		var rp: Vector3 = c[2]["p"]
+		# Sin repetir (pedido de Jon): si un nombre ya tiene su
+		# cartel puesto a menos de 30 m — el local y el lugar
+		# del plano que son el mismo sitio, dos entradas del
+		# mismo parque — no se pone dos veces. Las placas de
+		# calle van por su cuenta: son otro sistema.
+		if String(c[1]) != "placa":
+			var nombre_c := String(c[2]["n"]).to_lower()
+			var repetido := false
+			for ac in aceptados:
+				if String(ac[0]) == nombre_c and (ac[1] as Vector2).distance_to(Vector2(rp.x, rp.z)) < 30.0:
+					repetido = true
+					break
+			if repetido:
+				continue
+			aceptados.append([nombre_c, Vector2(rp.x, rp.z)])
 		var id := String(c[1]) + "|" + str(int(rp.x)) + "," + str(int(rp.z)) + "|" + String(c[2]["n"])
 		deseados[id] = c[2]
 		hechos += 1
@@ -3988,36 +4006,82 @@ func _refrescar_rotulos() -> void:
 			# hasta 0,50 m (antes ~1 m: en las calles estrechas el
 			# nombre ocupaba media calle y no dejaba ver ni pasar).
 			et.pixel_size = minf(0.0052 * float(r.get("g", 1.0)), float(r.get("w", 4.6)) / (float(maxi(1, nombre_r.length())) * 48.0))
-			et.modulate = Color(1, 1, 1)
+			et.modulate = r.get("col", Color(1, 1, 1))
 			et.outline_size = 6
 			et.outline_modulate = Color(0.05, 0.05, 0.08)
 			et.position = r["p"]
-			var hr: Vector2 = r.get("h", Vector2(0, 1))
-			et.rotation.y = atan2(hr.x, hr.y)
+			if int(r.get("b", 0)) == 1:
+				# Cartel de lugar: mira siempre al jugador, como
+				# los rótulos fijos de los sitios principales.
+				et.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			else:
+				var hr: Vector2 = r.get("h", Vector2(0, 1))
+				et.rotation.y = atan2(hr.x, hr.y)
 			add_child(et)
 			_rotulos_activos[id] = et
 
 func _pois_tile(cont: Node3D, pois: Array) -> void:
+	var clave_pois := ""
+	var lista_pois: Array = []
 	for p in pois:
-		# Solo los lugares señalados (c=1) llevan pilar y rótulo 3D: crear
-		# un Label3D por cada punto destacado de la baldosa disparaba el
-		# número de objetos en pantalla y la versión web dejaba de dibujar.
-		if int(p.get("c", 0)) != 1:
-			continue
 		var px := float(p["x"])
 		var pz := float(p["z"])
-		var pos := Vector3(px, _altura(px, pz), pz)
-		cont.add_child(_marcador(pos, Color(1.0, 0.78, 0.2), false, 0.45, true))
-		var et := Label3D.new()
-		et.text = String(p["n"])
-		et.font_size = 96
-		et.pixel_size = 0.009
-		et.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		et.modulate = Color(1.0, 0.85, 0.3)
-		et.outline_size = 12
-		et.outline_modulate = Color(0.10, 0.08, 0.02)
-		et.position = pos + Vector3(0, 11, 0)
-		cont.add_child(et)
+		if int(p.get("c", 0)) == 1:
+			# Los principales (c=1) llevan pilar y rótulo 3D fijo:
+			# son pocos (28 por las baldosas) y no saturan la web.
+			var pos := Vector3(px, _altura(px, pz), pz)
+			cont.add_child(_marcador(pos, Color(1.0, 0.78, 0.2), false, 0.45, true))
+			var et := Label3D.new()
+			et.text = String(p["n"])
+			et.font_size = 96
+			et.pixel_size = 0.009
+			et.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			et.modulate = Color(1.0, 0.85, 0.3)
+			et.outline_size = 12
+			et.outline_modulate = Color(0.10, 0.08, 0.02)
+			et.position = pos + Vector3(0, 11, 0)
+			cont.add_child(et)
+			continue
+		if int(p.get("k", 0)) != 1:
+			continue
+		# El resto de lugares del plano llevan su nombre A PIE DE
+		# CALLE (Jon, 2026-11-24: «donde quería que aparecieran
+		# los nombres era en los lugares de a pie, no en el
+		# plano»): se registran en el sistema de rótulos de
+		# proximidad, que solo crea el Label3D cuando estás
+		# cerca — un rótulo fijo por lugar disparaba el número
+		# de objetos y la versión web dejaba de dibujar.
+		# Baldosa horneada desactualizada: si el dato global ya
+		# no tiene este lugar en este sitio (la puerta de San
+		# Miguel se movió en la Tanda 19 y la baldosa guardó el
+		# punto viejo, dentro de un edificio), el global manda
+		# y aquí no se rotula nada.
+		var nombre_p := String(p["n"])
+		var global_mismo := false
+		var global_cerca := false
+		for q in _pois:
+			if String(q["n"]) == nombre_p:
+				global_mismo = true
+				if Vector2(float(q["x"]), float(q["z"])).distance_to(Vector2(px, pz)) < 3.0:
+					global_cerca = true
+					break
+		if global_mismo and not global_cerca:
+			continue
+		if clave_pois == "":
+			clave_pois = _clave_tile(_tile_de(Vector2(px, pz))) + "|pois"
+		# Sin repetir dentro de la baldosa: mismo nombre en el
+		# mismo sitio, una sola vez.
+		var repetido := false
+		for r0 in lista_pois:
+			var rp0: Vector3 = r0["p"]
+			if String(r0["n"]) == nombre_p and Vector2(rp0.x, rp0.z).distance_to(Vector2(px, pz)) < 3.0:
+				repetido = true
+				break
+		if repetido:
+			continue
+		lista_pois.append({"n": nombre_p, "h": Vector2(0, 1), "w": 9.0, "g": 1.0, "b": 1, "col": Color(1.0, 0.85, 0.3), "p": Vector3(px, _altura(px, pz) + 5.5, pz)})
+	if clave_pois != "":
+		_rotulos_datos[clave_pois] = lista_pois
 
 func _camara_y_luz() -> void:
 	_cam = Camera3D.new()
@@ -4165,6 +4229,7 @@ func _icono_volante() -> ImageTexture:
 func _crear_hud(capa: CanvasLayer) -> void:
 	# Pastilla azul con el nombre de la calle, centrada arriba
 	var pill := PanelContainer.new()
+	_pill_calle = pill
 	pill.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	pill.offset_left = -210
 	pill.offset_right = 210
@@ -9112,13 +9177,71 @@ func _crear_interfaz() -> void:
 	_ayuda.visible = false
 	capa.add_child(_ayuda)
 	get_viewport().size_changed.connect(func() -> void:
+		_ajustar_a_pantalla()
 		if _ayuda_abierta:
 			_ajustar_ayuda())
+	_ajustar_a_pantalla()
 	_generar_trabajos()
 	if _auto:
 		_aceptar_trabajo(0)
 	elif OS.get_cmdline_user_args().is_empty():
 		_abrir_ayuda()
+
+func _factor_pantalla(w: float, h: float, vp: Vector2) -> float:
+	# Cuánto hay que encoger un elemento de w×h para que quepa
+	# entero en una ventana de vp, con 10 px de margen por lado.
+	# En pantallas grandes vale 1: nada cambia.
+	return clampf(minf((vp.x - 20.0) / w, (vp.y - 20.0) / h), 0.4, 1.0)
+
+func _ajustar_a_pantalla() -> void:
+	# La interfaz se dibujó para ventanas de 1152×648 en
+	# adelante; en el móvil (390 px en vertical, 390 de alto en
+	# horizontal) las barras centradas y los paneles se salían
+	# por los lados — «en el móvil se ve muy mal» (Jon,
+	# 2026-11-24). Aquí todo se encaja en la ventana real, y
+	# se vuelve a encajar al girar el teléfono.
+	var vp := get_viewport().get_visible_rect().size
+	if _pill_calle != null:
+		var hw := minf(210.0, vp.x * 0.5 - 10.0)
+		_pill_calle.offset_left = -hw
+		_pill_calle.offset_right = hw
+	if _banner != null:
+		var hw2 := minf(315.0, vp.x * 0.5 - 10.0)
+		_banner.offset_left = -hw2
+		_banner.offset_right = hw2
+	if _burbuja != null:
+		if vp.x < 500.0:
+			# Estrecha: el bocadillo baja bajo el teléfono, a lo
+			# ancho, en vez de salirse por la derecha.
+			_burbuja.offset_left = 14.0
+			_burbuja.offset_top = 154.0
+			_burbuja.offset_right = vp.x - 10.0
+			_burbuja.offset_bottom = 204.0
+		else:
+			_burbuja.offset_left = 104.0
+			_burbuja.offset_top = 26.0
+			_burbuja.offset_right = 452.0
+			_burbuja.offset_bottom = 76.0
+	# Los paneles centrados se escalan enteros (con sus textos
+	# y botones dentro) hasta caber en la ventana.
+	var paneles: Array = [[_panel, 580.0, 400.0], [_panel_coches, 640.0, 460.0], [_panel_esp, 620.0, 430.0], [_panel_dlg, 680.0, 156.0], [_panel_carr, 640.0, 450.0]]
+	for e in paneles:
+		var c: Control = e[0]
+		if c == null:
+			continue
+		var s := _factor_pantalla(float(e[1]), float(e[2]), vp)
+		c.pivot_offset = c.size * 0.5
+		c.scale = Vector2(s, s)
+	if _panel_dlg != null:
+		# El diálogo cuelga bajo el centro: en pantallas bajas
+		# (móvil en horizontal) se sube lo que haga falta.
+		var s2 := _panel_dlg.scale.x
+		var fondo := vp.y * 0.5 + (_panel_dlg.offset_top + _panel_dlg.offset_bottom) * 0.5 + (_panel_dlg.offset_bottom - _panel_dlg.offset_top) * 0.5 * s2
+		var exceso := fondo - (vp.y - 10.0)
+		if exceso > 0.0:
+			var subir := exceso / s2
+			_panel_dlg.offset_top -= subir
+			_panel_dlg.offset_bottom -= subir
 
 func _ajustar_ayuda() -> void:
 	# El panel se adapta a la ventana: nunca más del 94 % de ancho ni de
@@ -16958,6 +17081,33 @@ func _capturar_si_toca() -> void:
 			if absf(et_r.pixel_size - ps_esp) > 0.0001 or et_r.text.length() * 48.0 * et_r.pixel_size > float(rr.get("w", 4.6)) + 0.05:
 				rot_ok = false
 		print("ROTULOS_OK pasa=", rot_ok, " n=", _rotulos_activos.size())
+		# Carteles a pie de calle: los lugares del plano (k=1 sin
+		# ser principales) están registrados como rótulos de
+		# proximidad, y al acercarte a uno su nombre aparece.
+		var n_pois_calle := 0
+		for clave_rc in _rotulos_datos:
+			if String(clave_rc).ends_with("|pois"):
+				n_pois_calle += (_rotulos_datos[clave_rc] as Array).size()
+		var pos_guardada := _jugador.position
+		var tile_parque := _tile_de(Vector2(-1627.9, -258.6))
+		for ddx in [-1, 0, 1]:
+			for ddz in [-1, 0, 1]:
+				_construir_tile(Vector2i(tile_parque.x + ddx, tile_parque.y + ddz), true)
+		_jugador.position = Vector3(-1627.9, _altura(-1627.9, -258.6) + 0.95, -258.6)
+		_refrescar_rotulos()
+		var cartel_parque := false
+		for id_rp in _rotulos_activos:
+			if (_rotulos_activos[id_rp] as Label3D).text == "Parque del Oeste":
+				cartel_parque = true
+		_jugador.position = pos_guardada
+		_refrescar_rotulos()
+		print("POIS_CALLE_OK pasa=", n_pois_calle >= 150 and cartel_parque, " registrados=", n_pois_calle, " cartel=", cartel_parque)
+		# La interfaz se encaja en pantallas de móvil sin
+		# tocar nada en pantallas grandes.
+		var pantalla_ok := absf(_factor_pantalla(580.0, 400.0, Vector2(1152, 648)) - 1.0) < 0.001
+		pantalla_ok = pantalla_ok and absf(_factor_pantalla(580.0, 400.0, Vector2(390, 844)) - 370.0 / 580.0) < 0.001
+		pantalla_ok = pantalla_ok and absf(_factor_pantalla(640.0, 460.0, Vector2(844, 390)) - 370.0 / 460.0) < 0.001
+		print("PANTALLA_OK pasa=", pantalla_ok)
 		print("BLOQUE7_PRUEBA_OK placas=", _placas_datos.size(), " paradas=", _b7_paradas, " contenedores=", _b7_contenedores, " pasa=", _placas_datos.size() >= 1000 and _b7_paradas >= 190 and _b7_contenedores >= 75)
 		# Bloque G: si la recta nodo->portal está bloqueada por un edificio,
 		# el tramo transitable tiene que rodearla sin chocar en ningún tramo.
