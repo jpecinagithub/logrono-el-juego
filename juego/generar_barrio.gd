@@ -6397,7 +6397,7 @@ func _andar(delta: float) -> void:
 				elegido = _banco[sup]
 			if elegido != null:
 				elegido.pitch_scale = randf_range(0.94, 1.06)
-				elegido.volume_db = -11.0 + randf_range(-1.2, 0.8)
+				elegido.volume_db = -14.5 + randf_range(-1.0, 0.7)
 				elegido.play()
 			elif _son_pasos != null:
 				_son_pasos.pitch_scale = randf_range(0.92, 1.08)
@@ -7546,7 +7546,7 @@ func _crear_capilla() -> void:
 	# mapa, con el marcador y el rótulo de las salas.
 	var fuera := _punto_libre(Vector3(-1541.1, 0, 403.5), 0.5)
 	fuera.y = _altura_terreno(fuera.x, fuera.z)
-	_marcador(fuera, Color(0.85, 0.72, 0.40), true, 0.6, true)
+	add_child(_marcador(fuera, Color(0.85, 0.72, 0.40), true, 0.6, true))
 	var et := Label3D.new()
 	et.text = "Iglesia de San Miguel"
 	et.font_size = 96
