@@ -488,3 +488,14 @@ Commit juego: 4d1399e. Publicado en la web (pck md5 3919349b5692e0a4a9d1e67a25c9
 - Pasos, tercer ajuste (Jon: «mas suave todavia»): centroides 527/579/364 Hz, pico 0,34, volumen en juego -18 dB.
 - Verificacion: verificar 117 marcas OK, 0 FALLO. Captura temporal capturar_sm retirada antes de publicar.
 - Pendiente sin tocar: la bici Grajera de Decathlon sigue sin reproducirse; a la espera de la prueba de Jon (Ctrl+F5 y clic en el boton azul).
+
+## TANDA 20 - la línea roja recta y la revisión de todos los cruces (2026-11-24, publicada)
+Commit juego: 06a8cb3. Publicado en la web (pck md5 12cfdca605818aed8852d370c668b8ea; copia previa ~/logrono-bak-tanda20-20261124.tar) y comprobado en la URL pública con captura mirada (BOOT_OK/SHOT_OK).
+- L1 (aviso de Jon con captura del mapa: «todavía no has arreglado la línea roja, quiero que sea más recta en esa zona»): el ancla central (0,120) se enganchaba a un nodo ~20 m al sur de la calle E-O del casco antiguo y la ruta hacía un bache rectangular (bajaba, recorría 60 m y volvía a subir). Ancla movida a (28,101), sobre la propia calle: 4411 → 4393 m, bache eliminado (LINEA_OK 1 pts=190 paradas=10 long=4393). Subir la penalización por giro a 6 o 10 no cambiaba la ruta: no era un problema de ajuste, era el ancla.
+- CRUCES (aviso de Jon a pie de calle en Alcalde Emilio Francés, dos cruces rodeados en rojo: «sigue habiendo cosas raras, vas a tener que revisar todos los cruces»): las losas grises torcidas sobre la calzada eran las cintas de acera/bordillo/líneas, que se dibujan rectas siguiendo su calle y atraviesan los cruces. El parche de asfalto de la Tanda 15 debía taparlas, pero tenía un tope de 40 parches por baldosa: en las baldosas densas (la de Francés tiene 1.432 calles) la mayoría de cruces se quedaba sin parche y las cintas quedaban a la vista, en las curvas como rombos (bisección con sin_acera: al quitar la malla de aceras, las losas desaparecían).
+  - Los cruces agrupados se calculan ahora ANTES de dibujar las calles, cada uno con su radio de parche (cruce["radio"]/["tapado"]).
+  - Recorte por zona: acera, bordillo, líneas de borde y trazos centrales no se pintan si el punto medio del tramo cae dentro del disco de un cruce (hash espacial de celdas de 40 m).
+  - El parche se pinta en todos los cruces válidos (tope 400).
+  - Guardia anti-pajarita: si una baranda retrocede en una curva cerrada (dot < -0,05), el quad no se pinta.
+- Verificación: verificar 117 marcas OK, 0 FALLO; capturas miradas a pie de calle y desde arriba en Emilio Francés (sin losas) y en Gran Vía (cebra y aceras intactas). La sonda de geometría en motor (sonda_cruce) se descartó: el await en _capturar_si_toca dejaba el arranque colgado; retirada y sustituida por la bisección por mallas.
+- Pendiente sin tocar: la bici Grajera de Decathlon sigue sin reproducirse; a la espera de la prueba de Jon (Ctrl+F5 y clic en el botón azul).
