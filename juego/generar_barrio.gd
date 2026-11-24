@@ -1148,10 +1148,15 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 			var dir_e := (b_e - a_e).normalized()
 			for ext in [a_e, b_e]:
 				var clave_e := str(int(round(ext.x))) + "," + str(int(round(ext.y)))
+				# Tanda 14: cada extremo guarda TODOS sus brazos
+				# (dirección hacia dentro de la calle, ancho y
+				# clase) para pintar un paso de cebra por brazo.
+				var brazo_e := {"dir": dir_e if ext == a_e else -dir_e, "ancho": float(calle_e["a"]), "clase": String(calle_e["c"])}
 				if extremos.has(clave_e):
 					extremos[clave_e]["n"] = int(extremos[clave_e]["n"]) + 1
+					(extremos[clave_e]["brazos"] as Array).append(brazo_e)
 				else:
-					extremos[clave_e] = {"n": 1, "pos": ext, "dir": dir_e if ext == a_e else -dir_e, "ancho": float(calle_e["a"]), "clase": String(calle_e["c"])}
+					extremos[clave_e] = {"n": 1, "pos": ext, "brazos": [brazo_e]}
 	var _nc := 0
 	var _trel2 := Time.get_ticks_msec()
 	for calle in calles:
@@ -1163,7 +1168,7 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 				return null
 		var medio: float = float(calle["a"]) * 0.5
 		var clase := String(calle["c"])
-		var con_acera := clase in ["primary", "secondary", "residential", "living_street"] and medio >= 2.75
+		var con_acera := clase in ["primary", "secondary", "tertiary", "residential", "living_street"] and medio >= 2.75
 		var pts: Array = []
 		var base_pts: Array[Vector2] = []
 		for q in calle["p"]:
@@ -1179,6 +1184,8 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 			pts.append([base_pts[i].x, base_pts[i].y])
 		var ant_izq := Vector3.ZERO
 		var ant_der := Vector3.ZERO
+		var ant_centro := Vector3.ZERO
+		var recorrido_c := 0.0
 		var ant_borde: Array = []
 		var ant_ai := Vector3.ZERO
 		var ant_ao := Vector3.ZERO
@@ -1217,6 +1224,7 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 			var ao := Vector3(xz_ao.x, alt.call(xz_ao.x, xz_ao.y, 0.17), xz_ao.y)
 			var di := Vector3(xz_di.x, alt.call(xz_di.x, xz_di.y, 0.17), xz_di.y)
 			var do2 := Vector3(xz_do.x, alt.call(xz_do.x, xz_do.y, 0.17), xz_do.y)
+			var cen3 := Vector3(p.x, alt.call(p.x, p.y, 0.095), p.y)
 			if not primero:
 				_tri(cv, cn, PackedColorArray(), ant_izq, der, ant_der, true, Color.WHITE)
 				_tri(cv, cn, PackedColorArray(), ant_izq, izq, der, true, Color.WHITE)
@@ -1225,6 +1233,22 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 					_tri(sv, sn, PackedColorArray(), ant_ai, ai, ao, true, Color.WHITE)
 					_tri(sv, sn, PackedColorArray(), ant_di, ant_do, do2, true, Color.WHITE)
 					_tri(sv, sn, PackedColorArray(), ant_di, do2, di, true, Color.WHITE)
+					# El bordillo (Tanda 14): la cara vertical entre
+					# la calzada (+0,08) y la acera (+0,17). Sin ella
+					# la acera era una cinta flotante sin canto.
+					var col_bord := Color(0.52, 0.50, 0.47)
+					_tri(bv, bn, bc, ant_izq, izq, ant_ai, true, col_bord)
+					_tri(bv, bn, bc, izq, ai, ant_ai, true, col_bord)
+					_tri(bv, bn, bc, ant_der, ant_di, der, true, col_bord)
+					_tri(bv, bn, bc, der, ant_di, di, true, col_bord)
+				# Línea central discontinua en las calles anchas
+				# (Tanda 14): trazos de ~5,5 m cada 10 m.
+				if medio >= 3.25 and clase in ["primary", "secondary", "tertiary"]:
+					if fmod(recorrido_c, 10.0) < 5.5:
+						var n3 := Vector3(normal2.x, 0, normal2.y)
+						_tri(bv, bn, bc, ant_centro + n3 * 0.07, cen3 - n3 * 0.07, ant_centro - n3 * 0.07, true, Color(0.88, 0.88, 0.86))
+						_tri(bv, bn, bc, ant_centro + n3 * 0.07, cen3 + n3 * 0.07, cen3 - n3 * 0.07, true, Color(0.88, 0.88, 0.86))
+					recorrido_c += ant_centro.distance_to(cen3)
 			if medio >= 2.25:
 				var lados_b: Array = []
 				for sgn in [1.0, -1.0]:
@@ -1248,6 +1272,7 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 				ant_borde = lados_b
 			ant_izq = izq
 			ant_der = der
+			ant_centro = cen3
 			ant_ai = ai
 			ant_ao = ao
 			ant_di = di
@@ -1255,7 +1280,7 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 			primero = false
 	cont.add_child(_malla_de(cv, cn, PackedColorArray(), Color(0.32, 0.32, 0.35)))
 	if sv.size() > 0:
-		cont.add_child(_malla_de(sv, sn, PackedColorArray(), Color(0.60, 0.58, 0.55)))
+		cont.add_child(_malla_de(sv, sn, PackedColorArray(), Color(0.66, 0.64, 0.60)))
 	if bv.size() > 0:
 		cont.add_child(_malla_de(bv, bn, bc, Color.WHITE))
 	# Pasos de cebra: en los cruces (3+ tramos) con calle ancha, 5 franjas
@@ -1265,21 +1290,36 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 	var zc := PackedColorArray()
 	var nceb := 0
 	for clave_e in extremos:
-		if nceb >= 10:
+		if nceb >= 24:
 			break
 		var e: Dictionary = extremos[clave_e]
-		var ancho_e := float(e["ancho"])
-		if int(e["n"]) < 3 or ancho_e < 6.0:
-			continue
-		if not ["primary", "secondary", "tertiary", "residential"].has(String(e["clase"])):
+		if int(e["n"]) < 3:
 			continue
 		var pos_e: Vector2 = e["pos"]
-		var dir_c: Vector2 = e["dir"]
 		var y_e := _altura(pos_e.x, pos_e.y) + 0.17
-		for k in 5:
-			var cen := pos_e + dir_c * (2.4 + float(k) * 0.95)
-			_caja_en(zv, zn, zc, Vector3(cen.x, y_e, cen.y), Vector3(ancho_e * 0.78, 0.03, 0.55), Color(0.88, 0.88, 0.86), atan2(dir_c.x, dir_c.y))
-		nceb += 1
+		# Un paso por brazo del cruce (Tanda 14; antes solo el
+		# primer brazo y tope de 10 por baldosa).
+		var dirs_pintadas: Array = []
+		for brazo in e["brazos"]:
+			if nceb >= 24:
+				break
+			var ancho_e := float(brazo["ancho"])
+			if ancho_e < 6.0:
+				continue
+			if not ["primary", "secondary", "tertiary", "residential"].has(String(brazo["clase"])):
+				continue
+			var dir_c: Vector2 = brazo["dir"]
+			var repetido := false
+			for dp in dirs_pintadas:
+				if (dp as Vector2).dot(dir_c) > 0.98:
+					repetido = true
+			if repetido:
+				continue
+			dirs_pintadas.append(dir_c)
+			for k in 5:
+				var cen := pos_e + dir_c * (2.4 + float(k) * 0.95)
+				_caja_en(zv, zn, zc, Vector3(cen.x, y_e, cen.y), Vector3(ancho_e * 0.78, 0.03, 0.55), Color(0.88, 0.88, 0.86), atan2(dir_c.x, dir_c.y))
+			nceb += 1
 	if nceb > 0:
 		cont.add_child(_malla_de(zv, zn, zc, Color.WHITE))
 	return cont
