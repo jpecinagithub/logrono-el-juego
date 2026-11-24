@@ -1296,7 +1296,6 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 		if int(e["n"]) < 3:
 			continue
 		var pos_e: Vector2 = e["pos"]
-		var y_e := _altura(pos_e.x, pos_e.y) + 0.17
 		# Un paso por brazo del cruce (Tanda 14; antes solo el
 		# primer brazo y tope de 10 por baldosa).
 		var dirs_pintadas: Array = []
@@ -1316,9 +1315,29 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 			if repetido:
 				continue
 			dirs_pintadas.append(dir_c)
+			# El paso empieza FUERA del cruce (corrección tras la
+			# captura de Jon del 2026-11-24): antes las bandas
+			# arrancaban a 2,4 m del centro y en calles anchas
+			# caían dentro del cruce, cruzadas sobre las esquinas
+			# como losas grises. Ahora arrancan tras el borde de
+			# la calle que cruza (la más ancha perpendicular)
+			# más 1,2 m. Y son PINTURA plana a ras de calzada
+			# (+0,098, bajo la acera: lo que se pase queda
+			# escondido bajo ella), no cajas de 3 cm.
+			var off_e := 2.4
+			for otro in e["brazos"]:
+				if absf(dir_c.dot(otro["dir"])) < 0.5:
+					off_e = maxf(off_e, float(otro["ancho"]) * 0.5 + 1.2)
+			var perp_e := Vector2(-dir_c.y, dir_c.x)
+			var mitad_e := ancho_e * 0.39
 			for k in 5:
-				var cen := pos_e + dir_c * (2.4 + float(k) * 0.95)
-				_caja_en(zv, zn, zc, Vector3(cen.x, y_e, cen.y), Vector3(ancho_e * 0.78, 0.03, 0.55), Color(0.88, 0.88, 0.86), atan2(dir_c.x, dir_c.y))
+				var cen := pos_e + dir_c * (off_e + 0.45 + float(k) * 0.95)
+				var y_c2 := _altura(cen.x, cen.y) + 0.098
+				var c3 := Vector3(cen.x, y_c2, cen.y)
+				var d3 := Vector3(dir_c.x, 0, dir_c.y)
+				var p3 := Vector3(perp_e.x, 0, perp_e.y)
+				_tri(zv, zn, zc, c3 - p3 * mitad_e - d3 * 0.27, c3 + p3 * mitad_e - d3 * 0.27, c3 + p3 * mitad_e + d3 * 0.27, true, Color(0.88, 0.88, 0.86))
+				_tri(zv, zn, zc, c3 - p3 * mitad_e - d3 * 0.27, c3 + p3 * mitad_e + d3 * 0.27, c3 - p3 * mitad_e + d3 * 0.27, true, Color(0.88, 0.88, 0.86))
 			nceb += 1
 	if nceb > 0:
 		cont.add_child(_malla_de(zv, zn, zc, Color.WHITE))
