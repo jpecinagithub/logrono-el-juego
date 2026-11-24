@@ -6397,7 +6397,7 @@ func _andar(delta: float) -> void:
 				elegido = _banco[sup]
 			if elegido != null:
 				elegido.pitch_scale = randf_range(0.94, 1.06)
-				elegido.volume_db = -14.5 + randf_range(-1.0, 0.7)
+				elegido.volume_db = -18.0 + randf_range(-1.0, 0.7)
 				elegido.play()
 			elif _son_pasos != null:
 				_son_pasos.pitch_scale = randf_range(0.92, 1.08)
@@ -7544,7 +7544,12 @@ func _crear_capilla() -> void:
 		"ruta": [fieles[3]["pie"], centro + Vector3(-0.85, 0.95, -3.02), centro + Vector3(-0.85, 0.18 + 0.95, -10.15), ambon]}
 	# La puerta, en la iglesia de verdad: su punto del
 	# mapa, con el marcador y el rótulo de las salas.
-	var fuera := _punto_libre(Vector3(-1541.1, 0, 403.5), 0.5)
+	# La puerta va FIJA en la acera de Marqués de Murrieta,
+	# 5 m al norte del punto del mapa: ese punto cae DENTRO
+	# de la huella de un bloque de 7 plantas (comprobado
+	# contra los datos de la baldosa), así que el jugador
+	# nunca podía pisarlo y la entrada no saltaba jamás.
+	var fuera := Vector3(-1541.1, 0, 397.8)
 	fuera.y = _altura_terreno(fuera.x, fuera.z)
 	add_child(_marcador(fuera, Color(0.85, 0.72, 0.40), true, 0.6, true))
 	var et := Label3D.new()
@@ -7679,9 +7684,18 @@ func _actualizar_lector(delta: float, t: float) -> void:
 
 func _probar_capilla() -> void:
 	var pasa := _interiores.has("sanmiguel") and not _misa.is_empty()
-	# La entrada de verdad: de pie en la puerta de la
-	# iglesia, la detección tiene que ofrecer San Miguel.
-	_jugador.position = (_interiores["sanmiguel"]["fuera"] as Vector3) + Vector3(0, 0.95, 0)
+	# La entrada de verdad, con las baldosas de la iglesia
+	# construidas (sus polígonos de colisión cargados): la
+	# puerta tiene que estar en suelo que se puede pisar y la
+	# detección tiene que saltar desde la acera.
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			_construir_tile(_tile_de(Vector2(-1541, 398)) + Vector2i(dx, dy))
+	var fuera_sm: Vector3 = _interiores["sanmiguel"]["fuera"]
+	pasa = pasa and not _choca(Vector2(fuera_sm.x, fuera_sm.z), 0.4)
+	_jugador.position = Vector3(-1542.5, _altura(-1542.5, 397.5) + 0.95, 397.5)
+	pasa = pasa and _puerta_cercana() == "sanmiguel"
+	_jugador.position = fuera_sm + Vector3(0, 0.95, 0)
 	pasa = pasa and _puerta_cercana() == "sanmiguel"
 	_entrar_interior("sanmiguel")
 	pasa = pasa and _en_interior == "sanmiguel"
