@@ -4651,6 +4651,7 @@ var _panel_carr_abierto := false
 var _gim_t := 0.0
 var _interiores := {}
 var _misa := {}
+var _misa_glera := {}
 var _tenderos: Array = []
 var _volver_a := Vector3.ZERO
 var _ancla_minimapa := Vector2.ZERO
@@ -4714,6 +4715,11 @@ var _bus_pasajero: Dictionary = {}
 var _pois_minimapa: Array = []
 var _asientos: Array = []
 var _sentado := false
+# Postura del jugador dentro de las capillas: "" de pie,
+# "sentado" en un banco o "rodillas" en el reclinatorio.
+var _arrodillado := false
+var _postura := ""
+var _postura_sitio := -1
 var _nadando := false
 var _vel_nado := Vector2.ZERO
 var _espuma_nado: MeshInstance3D = null
@@ -5140,6 +5146,10 @@ func _actualizar_caras() -> void:
 
 func _animar_paso(delta: float, andando: bool) -> void:
 	if _pierna_i == null:
+		return
+	if _arrodillado:
+		# De rodillas la postura la fija _andar; aquí no
+		# se toca ningún pivote.
 		return
 	if andando:
 		_fase_paso += delta * (15.0 if _corriendo else 9.0)
@@ -6073,6 +6083,11 @@ func _banco_cercano() -> Dictionary:
 func _alternar_sentarse() -> void:
 	if _en_coche:
 		return
+	if _postura != "":
+		# En una capilla manda la postura de la capilla:
+		# se sale con la acción «Levantarse», no con la
+		# tecla de los bancos de la calle.
+		return
 	if _sentado:
 		_sentado = false
 		_pierna_i.rotation.x = 0.0
@@ -6339,8 +6354,11 @@ func _physics_process(delta: float) -> void:
 			if _en_interior != "" and not _dlg_abierto and _tiempo > _aviso_hasta:
 				var acc_h := _accion_interior_cercana()
 				if acc_h != "":
-					var textos_h := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)"}
-					_aviso = "Pulsa E · " + String(textos_h.get(acc_h, acc_h))
+					var textos_h := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)", "levantarse": "Levantarse", "arrodillarse": "Arrodillarse"}
+					var texto_h := String(textos_h.get(acc_h, acc_h))
+					if acc_h.begins_with("sentarse:"):
+						texto_h = "Sentarse"
+					_aviso = "Pulsa E · " + texto_h
 					_aviso_hasta = _tiempo + 2.0
 			if not _en_coche and not _sentado and _tiempo > _aviso_banco_cd and not _banco_cercano().is_empty():
 				_aviso_banco_cd = _tiempo + 14.0
@@ -6361,6 +6379,24 @@ func _physics_process(delta: float) -> void:
 		_actualizar_camara(delta)
 
 func _andar(delta: float) -> void:
+	if _arrodillado:
+		# De rodillas en el reclinatorio de la capilla:
+		# muslos casi verticales, espinillas dobladas del
+		# todo hacia atrás, brazos apoyados hacia delante
+		# y la cabeza inclinada.
+		_pierna_i.rotation.x = 0.12
+		_pierna_d.rotation.x = 0.12
+		if _rodilla_i != null:
+			_rodilla_i.rotation.x = 1.95
+			_rodilla_d.rotation.x = 1.95
+		_brazo_i.rotation.x = -0.55
+		_brazo_d.rotation.x = -0.55
+		if _codo_i != null:
+			_codo_i.rotation.x = -0.25
+			_codo_d.rotation.x = -0.25
+		if _cabeza_j != null:
+			_cabeza_j.rotation.x = 0.18
+		return
 	if _sentado:
 		_pierna_i.rotation.x = -1.25
 		_pierna_d.rotation.x = -1.25
@@ -7001,7 +7037,7 @@ func _actualizar_hud() -> void:
 		elif _en_interior != "":
 			var acc_i := _accion_interior_cercana()
 			if acc_i != "":
-				var textos_acc := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)"}
+				var textos_acc := {"dormir": "Dormir", "pelo": "Cambiar de pelo", "ropa": "Cambiar camiseta", "pan": "Comprar pan (2 €)", "subir": "Subir a la planta alta", "bajar": "Bajar a la planta baja", "comprar:game": "Game: un videojuego (40 €)", "comprar:mediamarkt": "MediaMarkt: auriculares (25 €)", "comprar:eci": "El Corte Inglés: un perfume (30 €)", "comprar:forum": "Forum Sport: zapatillas (45 €)", "comprar:bk": "Burger King: un menú (10 €)", "comprar:cafe": "Cafetería: café con pincho (3 €)", "comprar:quiosco": "Quiosco: una revista (4 €)", "comprar:yelmo": "Yelmo Cines: una entrada (9 €)", "comprar:alehop": "ALE-HOP: un regalo (8 €)", "comprar:fosters": "Foster's: una cena (14 €)", "comprar:dec_bici": "Decathlon: bicicleta de montaña Grajera (450 €)", "comprar:dec_casco": "Decathlon: un casco de ciclismo (35 €)", "comprar:dec_mochila": "Decathlon: una mochila de montaña (40 €)", "comprar:dec_chaqueta": "Decathlon: una chaqueta impermeable (80 €)", "comprar:dec_mancuernas": "Decathlon: unas mancuernas (30 €)", "comprar:dec_zapatillas": "Decathlon: unas zapatillas de trail (65 €)", "comprar:dec_balon": "Decathlon: un balón de fútbol (20 €)", "comprar:dec_raqueta": "Decathlon: una raqueta de pádel (55 €)", "comprar:dec_banador": "Decathlon: bañador y gafas de natación (25 €)", "comprar:dec_tienda": "Decathlon: una tienda de campaña (120 €)", "levantarse": "Levantarse", "arrodillarse": "Arrodillarse"}
 				if acc_i.begins_with("comprar:"):
 					# En el botón no cabe el texto largo de la
 					# tienda: producto sin artículo y precio.
@@ -7016,7 +7052,10 @@ func _actualizar_hud() -> void:
 					else:
 						_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
 				else:
-					_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
+					if acc_i.begins_with("sentarse:"):
+						_btn_bajar.text = "Sentarse"
+					else:
+						_btn_bajar.text = String(textos_acc.get(acc_i, acc_i))
 				_btn_bajar.visible = true
 				_btn_modo = acc_i
 			else:
@@ -7343,6 +7382,7 @@ func _crear_interiores() -> void:
 		_tenderos.append(raiz_t)
 	_crear_mall()
 	_crear_capilla()
+	_crear_capilla_glera()
 	print("INTERIORES_OK salas=", _interiores.size())
 
 func _tiendas_mall() -> Dictionary:
@@ -7570,6 +7610,14 @@ func _crear_capilla() -> void:
 			_mueble(v, n, c, centro, Vector3(bx + 2.25, 0.21, bz), Vector3(0.14, 0.42, 0.46), madera, false)
 			_mueble(v, n, c, centro, Vector3(bx, 0.10, bz - 0.62), Vector3(5.0, 0.20, 0.22), madera, false)
 			nbancos += 1
+	# Dos reclinatorios junto a las paredes laterales,
+	# mirando al altar: el jugador puede arrodillarse en
+	# ellos cuando quiera (acción «Arrodillarse»).
+	for lado in [-1.0, 1.0]:
+		_mueble(v, n, c, centro, Vector3(7.55 * lado, 0.09, 1.22), Vector3(0.62, 0.18, 0.45), madera, false)
+		_mueble(v, n, c, centro, Vector3(7.55 * lado, 0.80, 0.82), Vector3(0.62, 0.07, 0.30), madera, false)
+		_mueble(v, n, c, centro, Vector3(7.28 * lado, 0.40, 0.82), Vector3(0.07, 0.80, 0.07), madera, false)
+		_mueble(v, n, c, centro, Vector3(7.82 * lado, 0.40, 0.82), Vector3(0.07, 0.80, 0.07), madera, false)
 	var nodo_c := Node3D.new()
 	nodo_c.add_child(_malla_de(v, n, c, Color.WHITE))
 	add_child(nodo_c)
@@ -7603,6 +7651,21 @@ func _crear_capilla() -> void:
 	var ambon := centro + Vector3(-3.6, 0.18 + 0.95, -10.15)
 	_misa = {"t": 0.0, "fieles": fieles, "cura": cura, "brazos": 0.0, "inclina": 0.0, "bancos": nbancos, "centro": centro, "ambon": ambon, "lector_idx": 3,
 		"ruta": [fieles[3]["pie"], centro + Vector3(-0.85, 0.95, -3.02), centro + Vector3(-0.85, 0.18 + 0.95, -10.15), ambon]}
+	# Los sitios del jugador: dos por banco, en los huecos
+	# que los fieles dejan libres, y el reclinatorio del
+	# lado este para arrodillarse.
+	var asientos_j: Array = []
+	var pies_j: Array = []
+	for lado in [-1.0, 1.0]:
+		for fila in 10:
+			var bz3 := -8.2 + fila * 1.5
+			var bx3: float = 3.6 * lado
+			for desf_j in [-1.25, 1.25]:
+				asientos_j.append(centro + Vector3(bx3 + desf_j, 0.55, bz3 - 0.05))
+				pies_j.append(centro + Vector3(bx3 + desf_j, 0.95, bz3 + 0.68))
+	_misa["asientos_jugador"] = asientos_j
+	_misa["pies_jugador"] = pies_j
+	_misa["reclinatorio_jugador"] = centro + Vector3(7.55, 0.50, 1.12)
 	# La puerta, en la iglesia de verdad: su punto del
 	# mapa, con el marcador y el rótulo de las salas.
 	# La puerta va FIJA en la acera de Marqués de Murrieta,
@@ -7638,24 +7701,30 @@ func _aplicar_postura(fl: Dictionary) -> void:
 	(d["pd"] as Node3D).rotation.x = -1.25 * (1.0 - f)
 
 func _actualizar_misa(delta: float) -> void:
-	# El ciclo de la Misa de San Miguel (80 s): la
-	# asamblea se levanta y se sienta a la vez dos veces,
-	# el sacerdote levanta las manos en las oraciones y
-	# se inclina al final, y entre medias el lector sube
-	# al ambón, lee y vuelve a su banco.
-	if _misa.is_empty():
-		return
-	_misa["t"] = float(_misa["t"]) + delta
-	var t := fmod(float(_misa["t"]), 80.0)
+	# Las Misas de las dos capillas (San Miguel y el
+	# Oratorio de Glera) comparten el mismo ciclo, cada
+	# una con su estado y su propio reloj.
+	for e in [_misa, _misa_glera]:
+		if not (e as Dictionary).is_empty():
+			_actualizar_misa_una(e, delta)
+
+func _actualizar_misa_una(e: Dictionary, delta: float) -> void:
+	# El ciclo de una Misa (80 s): la asamblea se levanta
+	# y se sienta a la vez dos veces, el sacerdote levanta
+	# las manos en las oraciones y se inclina al final, y
+	# entre medias el lector sube al ambón, lee y vuelve
+	# a su banco.
+	e["t"] = float(e["t"]) + delta
+	var t := fmod(float(e["t"]), 80.0)
 	var asamblea := 0.0
 	if (t >= 14.0 and t < 26.0) or (t >= 56.0 and t < 66.0):
 		asamblea = 1.0
-	var cura: Dictionary = _misa["cura"]
+	var cura: Dictionary = e["cura"]
 	var brazos_obj := 0.0
 	if (t >= 16.0 and t < 24.0) or (t >= 58.0 and t < 64.0):
 		brazos_obj = 1.0
-	_misa["brazos"] = lerpf(float(_misa["brazos"]), brazos_obj, clampf(delta * 2.0, 0.0, 1.0))
-	var b := float(_misa["brazos"])
+	e["brazos"] = lerpf(float(e["brazos"]), brazos_obj, clampf(delta * 2.0, 0.0, 1.0))
+	var b := float(e["brazos"])
 	(cura["bi"] as Node3D).rotation.z = -0.95 * b
 	(cura["bd"] as Node3D).rotation.z = 0.95 * b
 	(cura["bi"] as Node3D).rotation.x = -0.30 * b
@@ -7664,10 +7733,10 @@ func _actualizar_misa(delta: float) -> void:
 		(cura["ci"] as Node3D).rotation.x = -0.35 * b
 		(cura["cd"] as Node3D).rotation.x = -0.35 * b
 	var incl_obj := 1.0 if (t >= 70.0 and t < 76.0) else 0.0
-	_misa["inclina"] = lerpf(float(_misa["inclina"]), incl_obj, clampf(delta * 1.6, 0.0, 1.0))
-	(cura["cabeza"] as Node3D).rotation.x = 0.38 * float(_misa["inclina"])
-	var fieles: Array = _misa["fieles"]
-	var idx_l := int(_misa["lector_idx"])
+	e["inclina"] = lerpf(float(e["inclina"]), incl_obj, clampf(delta * 1.6, 0.0, 1.0))
+	(cura["cabeza"] as Node3D).rotation.x = 0.38 * float(e["inclina"])
+	var fieles: Array = e["fieles"]
+	var idx_l := int(e["lector_idx"])
 	for i in fieles.size():
 		if i == idx_l:
 			continue
@@ -7675,15 +7744,15 @@ func _actualizar_misa(delta: float) -> void:
 		var vel := 1.9 - 0.05 * (i % 5)
 		fl["f"] = lerpf(float(fl["f"]), asamblea, clampf(delta * vel, 0.0, 1.0))
 		_aplicar_postura(fl)
-	_actualizar_lector(delta, t)
+	_actualizar_lector_una(e, delta, t)
 
-func _actualizar_lector(delta: float, t: float) -> void:
+func _actualizar_lector_una(e: Dictionary, delta: float, t: float) -> void:
 	# El lector es uno de los fieles (el del pasillo, fila
 	# 3): con la asamblea hace lo que todos; en su momento
 	# (t 28-54) se levanta solo, va por el pasillo al
 	# ambón, lee de cara a la asamblea y vuelve a su sitio.
-	var fieles: Array = _misa["fieles"]
-	var fl: Dictionary = fieles[int(_misa["lector_idx"])]
+	var fieles: Array = e["fieles"]
+	var fl: Dictionary = fieles[int(e["lector_idx"])]
 	var raiz: Node3D = fl["raiz"]
 	var d: Dictionary = fl["d"]
 	if t < 28.0 or t >= 54.0:
@@ -7701,7 +7770,7 @@ func _actualizar_lector(delta: float, t: float) -> void:
 		(d["cabeza"] as Node3D).rotation.x = 0.0
 		return
 	fl["f"] = 1.0
-	var ruta: Array = _misa["ruta"]
+	var ruta: Array = e["ruta"]
 	var total := 0.0
 	for i in range(1, ruta.size()):
 		total += (ruta[i] as Vector3).distance_to(ruta[i - 1])
@@ -7774,7 +7843,228 @@ func _probar_capilla() -> void:
 	var raiz_l: Node3D = (_misa["fieles"] as Array)[int(_misa["lector_idx"])]["raiz"]
 	var amb: Vector3 = _misa["ambon"]
 	pasa = pasa and Vector2(raiz_l.position.x - amb.x, raiz_l.position.z - amb.z).length() < 0.6
+	# Las posturas del jugador también aquí: sentarse en
+	# un banco libre y arrodillarse en el reclinatorio.
+	_entrar_interior("sanmiguel")
+	var pies_s: Array = _misa["pies_jugador"]
+	var asientos_s: Array = _misa["asientos_jugador"]
+	_jugador.position = pies_s[0]
+	var acc_s := _accion_interior_cercana()
+	pasa = pasa and acc_s == "sentarse:0"
+	_ejecutar_accion_interior(acc_s)
+	pasa = pasa and _postura == "sentado" and _jugador.position.distance_to(asientos_s[0]) < 0.01
+	_ejecutar_accion_interior("levantarse")
+	pasa = pasa and _postura == "" and not _sentado
+	var rec_s: Vector3 = _misa["reclinatorio_jugador"]
+	_jugador.position = Vector3(rec_s.x, 0.95, rec_s.z + 0.85)
+	pasa = pasa and _accion_interior_cercana() == "arrodillarse"
+	_ejecutar_accion_interior("arrodillarse")
+	pasa = pasa and _postura == "rodillas" and _arrodillado
+	_ejecutar_accion_interior("levantarse")
+	pasa = pasa and _postura == "" and not _arrodillado
+	_salir_interior()
 	print("CAPILLA_PRUEBA_OK pasa=", pasa, " fieles=", (_misa["fieles"] as Array).size(), " de_pie=", f0, " brazos=", float(_misa["brazos"]))
+
+func _probar_glera() -> void:
+	var pasa := _interiores.has("glera") and not _misa_glera.is_empty()
+	# La entrada de verdad, con las baldosas de San Antón
+	# construidas (la lección de San Miguel: sin los
+	# polígonos de la baldosa cargados, la prueba no
+	# vale): la puerta en suelo pis able y la detección
+	# saltando desde la acera.
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			_construir_tile(_tile_de(Vector2(-316, 549)) + Vector2i(dx, dy))
+	var fuera_g: Vector3 = _interiores["glera"]["fuera"]
+	pasa = pasa and not _choca(Vector2(fuera_g.x, fuera_g.z), 0.4)
+	_jugador.position = Vector3(-319.5, _altura(-319.5, 548.6) + 0.95, 548.6)
+	pasa = pasa and _puerta_cercana() == "glera"
+	_jugador.position = fuera_g + Vector3(0, 0.95, 0)
+	pasa = pasa and _puerta_cercana() == "glera"
+	_entrar_interior("glera")
+	pasa = pasa and _en_interior == "glera"
+	pasa = pasa and (_misa_glera["fieles"] as Array).size() == 12 and int(_misa_glera["bancos"]) == 12
+	# Su Misa se mueve: en la ventana de la asamblea de
+	# pie, los fieles se levantan y el sacerdote levanta
+	# los brazos.
+	_misa_glera["t"] = 17.0
+	for i in 30:
+		_actualizar_misa(0.1)
+	var f0 := float((_misa_glera["fieles"] as Array)[0]["f"])
+	pasa = pasa and f0 > 0.8 and float(_misa_glera["brazos"]) > 0.7
+	# Las posturas del jugador: sentarse y levantarse.
+	var pies_g: Array = _misa_glera["pies_jugador"]
+	var asientos_g: Array = _misa_glera["asientos_jugador"]
+	_jugador.position = pies_g[0]
+	var acc := _accion_interior_cercana()
+	pasa = pasa and acc == "sentarse:0"
+	_ejecutar_accion_interior(acc)
+	pasa = pasa and _postura == "sentado" and _jugador.position.distance_to(asientos_g[0]) < 0.01
+	pasa = pasa and _accion_interior_cercana() == "levantarse"
+	_ejecutar_accion_interior("levantarse")
+	pasa = pasa and _postura == "" and not _sentado and _jugador.position.distance_to(pies_g[0]) < 0.01
+	# Y arrodillarse en el reclinatorio.
+	var rec_g: Vector3 = _misa_glera["reclinatorio_jugador"]
+	_jugador.position = Vector3(rec_g.x, 0.95, rec_g.z + 0.85)
+	pasa = pasa and _accion_interior_cercana() == "arrodillarse"
+	_ejecutar_accion_interior("arrodillarse")
+	pasa = pasa and _postura == "rodillas" and _arrodillado and _jugador.position.distance_to(rec_g) < 0.01
+	_ejecutar_accion_interior("levantarse")
+	pasa = pasa and _postura == "" and not _arrodillado
+	_salir_interior()
+	pasa = pasa and _en_interior == "" and _postura == ""
+	print("GLERA_PRUEBA_OK pasa=", pasa, " fieles=", (_misa_glera["fieles"] as Array).size(), " de_pie=", f0)
+
+func _crear_capilla_glera() -> void:
+	# La capilla del Oratorio de la Asociación Juvenil
+	# Glera (pedido de Jon, 2026-11-24): San Antón 9, una
+	# capilla más pequeña que la de San Miguel, con el
+	# mismo tratamiento: se puede entrar y dentro se está
+	# celebrando la Santa Misa (12 bancos, 12 fieles, el
+	# sacerdote celebrando, el lector que sube al ambón).
+	# Su ciclo va desplazado 40 s respecto al de San
+	# Miguel, para que las dos Misas no vayan a la vez.
+	# La celebración la mueve la misma rutina de Misa,
+	# con su propio estado (_misa_glera).
+	var centro := Vector3(4880, 0, 5000)
+	var hx := 6.5
+	var hz := 9.5
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var c := PackedColorArray()
+	var pared := Color(0.87, 0.83, 0.76)
+	var piedra := Color(0.66, 0.63, 0.58)
+	_caja_en(v, n, c, centro + Vector3(0, -0.06, 0), Vector3(2 * hx + 1.4, 0.12, 2 * hz + 1.4), piedra, 0.0)
+	_caja_en(v, n, c, centro + Vector3(0, 0.012, 0.8), Vector3(2.0, 0.025, 16.0), Color(0.48, 0.17, 0.19), 0.0)
+	# Paredes de 4,2 m, con la puerta en la pared sur.
+	_caja_en(v, n, c, centro + Vector3(0, 2.1, -hz), Vector3(2 * hx + 0.35, 4.2, 0.35), pared, 0.0)
+	_caja_en(v, n, c, centro + Vector3(-hx, 2.1, 0), Vector3(0.35, 4.2, 2 * hz), pared, 0.0)
+	_caja_en(v, n, c, centro + Vector3(hx, 2.1, 0), Vector3(0.35, 4.2, 2 * hz), pared, 0.0)
+	var tramo := hx - 0.8
+	_caja_en(v, n, c, centro + Vector3(-(0.8 + tramo / 2.0), 2.1, hz), Vector3(tramo, 4.2, 0.35), pared, 0.0)
+	_caja_en(v, n, c, centro + Vector3(0.8 + tramo / 2.0, 2.1, hz), Vector3(tramo, 4.2, 0.35), pared, 0.0)
+	_registrar_rect(centro, Vector2(0, -hz), Vector2(2 * hx + 0.35, 0.35))
+	_registrar_rect(centro, Vector2(-hx, 0), Vector2(0.35, 2 * hz))
+	_registrar_rect(centro, Vector2(hx, 0), Vector2(0.35, 2 * hz))
+	_registrar_rect(centro, Vector2(-(0.8 + tramo / 2.0), hz), Vector2(tramo, 0.35))
+	_registrar_rect(centro, Vector2(0.8 + tramo / 2.0, hz), Vector2(tramo, 0.35))
+	# Columnas y vidrieras de colores en los laterales.
+	for lado in [-1.0, 1.0]:
+		for cz in [-3.5, 2.5]:
+			_mueble(v, n, c, centro, Vector3(5.85 * lado, 2.1, cz), Vector3(0.5, 4.2, 0.5), Color(0.74, 0.71, 0.66))
+		var cols_v := [Color(0.32, 0.47, 0.95), Color(0.95, 0.72, 0.28)]
+		for vi in 2:
+			_mueble(v, n, c, centro, Vector3(6.28 * lado, 2.9, -3.5 + vi * 6.0), Vector3(0.06, 1.4, 1.1), cols_v[vi], false)
+	# El presbiterio, más corto que el de San Miguel, con
+	# su panel de fondo y la cruz.
+	_mueble(v, n, c, centro, Vector3(0, 0.09, -8.0), Vector3(2 * hx, 0.18, 3.0), Color(0.72, 0.69, 0.64))
+	_mueble(v, n, c, centro, Vector3(0, 1.6, -9.35), Vector3(4.6, 3.2, 0.18), Color(0.46, 0.19, 0.21), false)
+	_mueble(v, n, c, centro, Vector3(0, 2.5, -9.2), Vector3(0.16, 1.8, 0.10), Color(0.38, 0.24, 0.12), false)
+	_mueble(v, n, c, centro, Vector3(0, 2.85, -9.2), Vector3(0.9, 0.16, 0.10), Color(0.38, 0.24, 0.12), false)
+	# El altar, con su crucifijo y las dos velas.
+	_mueble(v, n, c, centro, Vector3(0, 0.66, -7.9), Vector3(2.2, 0.95, 1.0), Color(0.93, 0.92, 0.89))
+	_mueble(v, n, c, centro, Vector3(0, 1.17, -7.9), Vector3(2.4, 0.07, 1.15), Color(0.96, 0.95, 0.93), false)
+	_mueble(v, n, c, centro, Vector3(0, 0.63, -7.37), Vector3(2.2, 0.62, 0.05), Color(0.78, 0.62, 0.25), false)
+	_mueble(v, n, c, centro, Vector3(0.75, 1.46, -7.9), Vector3(0.13, 0.06, 0.13), Color(0.55, 0.42, 0.18), false)
+	_mueble(v, n, c, centro, Vector3(0.75, 1.68, -7.9), Vector3(0.04, 0.40, 0.04), Color(0.78, 0.62, 0.25), false)
+	_mueble(v, n, c, centro, Vector3(0.75, 1.74, -7.9), Vector3(0.20, 0.04, 0.04), Color(0.78, 0.62, 0.25), false)
+	for lado in [-1.0, 1.0]:
+		_mueble(v, n, c, centro, Vector3(1.0 * lado, 1.35, -7.9), Vector3(0.05, 0.30, 0.05), Color(0.93, 0.92, 0.88), false)
+		_bola_en(v, n, c, centro + Vector3(1.0 * lado, 1.57, -7.9), 0.045, Color(1.0, 0.82, 0.45), lado * 3.0, 0.9)
+	# El ambón, la sede del celebrante y la pila bautismal.
+	_mueble(v, n, c, centro, Vector3(-2.6, 0.76, -7.3), Vector3(0.5, 1.16, 0.45), Color(0.45, 0.32, 0.19))
+	_mueble(v, n, c, centro, Vector3(-2.6, 1.37, -7.3), Vector3(0.65, 0.07, 0.55), Color(0.52, 0.38, 0.23), false)
+	_mueble(v, n, c, centro, Vector3(-2.6, 1.44, -7.3), Vector3(0.42, 0.05, 0.34), Color(0.90, 0.88, 0.84), false)
+	_mueble(v, n, c, centro, Vector3(2.6, 0.73, -8.7), Vector3(0.6, 1.1, 0.5), Color(0.45, 0.32, 0.19))
+	_mueble(v, n, c, centro, Vector3(4.3, 0.45, 7.4), Vector3(0.7, 0.9, 0.7), piedra)
+	_bola_en(v, n, c, centro + Vector3(4.3, 0.98, 7.4), 0.26, Color(0.55, 0.65, 0.75), 2.0, 0.55)
+	# Los 12 bancos: dos bloques de seis filas, con su
+	# respaldo y su reclinatorio.
+	var madera := Color(0.42, 0.30, 0.18)
+	var nbancos := 0
+	for lado in [-1.0, 1.0]:
+		for fila in 6:
+			var bz := -5.4 + fila * 1.5
+			var bx: float = 2.55 * lado
+			_mueble(v, n, c, centro, Vector3(bx, 0.45, bz), Vector3(3.6, 0.12, 0.52), madera)
+			_mueble(v, n, c, centro, Vector3(bx, 0.82, bz + 0.30), Vector3(3.6, 0.62, 0.10), madera, false)
+			_mueble(v, n, c, centro, Vector3(bx - 1.55, 0.21, bz), Vector3(0.14, 0.42, 0.46), madera, false)
+			_mueble(v, n, c, centro, Vector3(bx + 1.55, 0.21, bz), Vector3(0.14, 0.42, 0.46), madera, false)
+			_mueble(v, n, c, centro, Vector3(bx, 0.10, bz - 0.62), Vector3(3.6, 0.20, 0.22), madera, false)
+			nbancos += 1
+	# Los reclinatorios del jugador, como en San Miguel.
+	for lado in [-1.0, 1.0]:
+		_mueble(v, n, c, centro, Vector3(5.55 * lado, 0.09, 1.22), Vector3(0.62, 0.18, 0.45), madera, false)
+		_mueble(v, n, c, centro, Vector3(5.55 * lado, 0.80, 0.82), Vector3(0.62, 0.07, 0.30), madera, false)
+		_mueble(v, n, c, centro, Vector3(5.28 * lado, 0.40, 0.82), Vector3(0.07, 0.80, 0.07), madera, false)
+		_mueble(v, n, c, centro, Vector3(5.82 * lado, 0.40, 0.82), Vector3(0.07, 0.80, 0.07), madera, false)
+	var nodo_g := Node3D.new()
+	nodo_g.add_child(_malla_de(v, n, c, Color.WHITE))
+	add_child(nodo_g)
+	# Los 12 fieles: uno por banco, sentados mirando al
+	# altar, cada uno en su sitio del banco.
+	var camisas_f := [Color(0.55, 0.30, 0.28), Color(0.25, 0.38, 0.60), Color(0.30, 0.50, 0.32), Color(0.60, 0.52, 0.38), Color(0.45, 0.35, 0.55), Color(0.70, 0.62, 0.55), Color(0.35, 0.45, 0.50), Color(0.62, 0.40, 0.30)]
+	var pelos_f := [Color(0.16, 0.11, 0.07), Color(0.35, 0.24, 0.14), Color(0.62, 0.55, 0.45), Color(0.10, 0.09, 0.08), Color(0.45, 0.30, 0.16)]
+	var fieles: Array = []
+	var k := 0
+	for lado in [-1.0, 1.0]:
+		for fila in 6:
+			var bz2 := -5.4 + fila * 1.5
+			var bx2: float = 2.55 * lado
+			var desf: float = [-1.2, -0.4, 0.45, 1.2][k % 4]
+			var per := _hacer_persona(camisas_f[k % camisas_f.size()], Color(0.24, 0.25, 0.30), pelos_f[k % pelos_f.size()], false, k % 3 == 1, {"talla": 0.94 + 0.02 * (k % 4), "pelo_estilo": ["corto", "melena", "corto", "coleta", "calvo", "mono"][k % 6], "falda": k % 5 == 3})
+			var raiz: Node3D = per["raiz"]
+			var asiento := centro + Vector3(bx2 + desf, 0.55, bz2 - 0.05)
+			raiz.position = asiento
+			raiz.rotation.y = PI
+			(per["pi"] as Node3D).rotation.x = -1.25
+			(per["pd"] as Node3D).rotation.x = -1.25
+			add_child(raiz)
+			fieles.append({"d": per, "raiz": raiz, "asiento": asiento, "pie": centro + Vector3(bx2 + desf, 0.95, bz2 + 0.68), "f": 0.0})
+			k += 1
+	# El sacerdote, tras el altar mirando a la asamblea.
+	var cura := _hacer_persona(Color(0.16, 0.42, 0.24), Color(0.90, 0.89, 0.85), Color(0.78, 0.78, 0.78), true, false, {"talla": 1.0})
+	var raiz_c: Node3D = cura["raiz"]
+	raiz_c.position = centro + Vector3(0, 0.18 + 0.95, -8.9)
+	add_child(raiz_c)
+	var ambon := centro + Vector3(-2.6, 0.18 + 0.95, -6.85)
+	_misa_glera = {"t": 40.0, "fieles": fieles, "cura": cura, "brazos": 0.0, "inclina": 0.0, "bancos": nbancos, "centro": centro, "ambon": ambon, "lector_idx": 3,
+		"ruta": [fieles[3]["pie"], centro + Vector3(-0.6, 0.95, -0.22), centro + Vector3(-0.6, 0.18 + 0.95, -6.9), ambon]}
+	# Los sitios del jugador: dos por banco y el
+	# reclinatorio del lado este.
+	var asientos_j: Array = []
+	var pies_j: Array = []
+	for lado in [-1.0, 1.0]:
+		for fila in 6:
+			var bz3 := -5.4 + fila * 1.5
+			var bx3: float = 2.55 * lado
+			for desf_j in [-0.95, 0.95]:
+				asientos_j.append(centro + Vector3(bx3 + desf_j, 0.55, bz3 - 0.05))
+				pies_j.append(centro + Vector3(bx3 + desf_j, 0.95, bz3 + 0.68))
+	_misa_glera["asientos_jugador"] = asientos_j
+	_misa_glera["pies_jugador"] = pies_j
+	_misa_glera["reclinatorio_jugador"] = centro + Vector3(5.55, 0.50, 1.12)
+	# La puerta, en San Antón 9: la asociación está en
+	# los datos del juego (su local, con el rótulo, en
+	# (-313, 548)); la puerta va en la franja abierta
+	# delante de su escaparate, entre la acera y la
+	# fachada. El punto está comprobado contra los datos
+	# de la baldosa (libre, fuera de toda huella).
+	var fuera := Vector3(-316.5, 0, 548.6)
+	fuera.y = _altura_terreno(fuera.x, fuera.z)
+	add_child(_marcador(fuera, Color(0.85, 0.72, 0.40), true, 0.6, true))
+	var et := Label3D.new()
+	et.text = "Oratorio de Glera"
+	et.font_size = 96
+	et.pixel_size = 0.012
+	et.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	et.modulate = Color(0.85, 0.72, 0.40)
+	et.outline_size = 10
+	et.outline_modulate = Color(0.05, 0.05, 0.08)
+	et.position = fuera + Vector3(0, 6.5, 0)
+	add_child(et)
+	_interiores["glera"] = {"nombre": "Oratorio de Glera", "fuera": fuera, "dentro": centro + Vector3(0, 0, hz - 1.7), "centro": centro, "tam": Vector2(2 * hx, 2 * hz), "acciones": {}}
+	print("CAPILLA_GLERA_OK fieles=", fieles.size(), " bancos=", nbancos)
 
 func _crear_mall() -> void:
 	# El Centro Comercial Berceo por dentro: dos plantas (dos salas
@@ -8058,6 +8348,12 @@ func _ejecutar_accion_interior(acc: String) -> void:
 		_cambiar_planta(false)
 	elif acc.begins_with("comprar:"):
 		_comprar_tienda(acc.trim_prefix("comprar:"))
+	elif acc == "levantarse":
+		_levantarse_capilla()
+	elif acc.begins_with("sentarse:"):
+		_sentarse_capilla(int(acc.trim_prefix("sentarse:")))
+	elif acc == "arrodillarse":
+		_arrodillarse_capilla()
 	elif acc == "" and _en_interior != "":
 		var den_e: Vector3 = _interiores[_en_interior]["dentro"]
 		if Vector2(_jugador.position.x - den_e.x, _jugador.position.z - den_e.z).length() < 2.6:
@@ -8066,12 +8362,97 @@ func _ejecutar_accion_interior(acc: String) -> void:
 func _accion_interior_cercana() -> String:
 	if _en_interior == "":
 		return ""
+	if _en_interior == "sanmiguel" or _en_interior == "glera":
+		# En las capillas las acciones son las posturas:
+		# sentarse en un banco libre, arrodillarse en el
+		# reclinatorio, y levantarse si ya está en una.
+		if _postura != "":
+			return "levantarse"
+		var e := _capilla_actual()
+		if e.is_empty():
+			return ""
+		var mejor := 1.2
+		var mejor_i := -1
+		var asientos: Array = e.get("asientos_jugador", [])
+		for i in asientos.size():
+			var sp: Vector3 = asientos[i]
+			var d := Vector2(_jugador.position.x - sp.x, _jugador.position.z - sp.z).length()
+			if d < mejor:
+				mejor = d
+				mejor_i = i
+		if mejor_i >= 0:
+			return "sentarse:" + str(mejor_i)
+		var rec: Vector3 = e.get("reclinatorio_jugador", Vector3(1e9, 0, 1e9))
+		if Vector2(_jugador.position.x - rec.x, _jugador.position.z - rec.z).length() < 1.2:
+			return "arrodillarse"
+		return ""
 	var accs: Dictionary = _interiores[_en_interior]["acciones"]
 	for a in accs:
 		var p: Vector3 = accs[a]
 		if Vector2(_jugador.position.x - p.x, _jugador.position.z - p.z).length() < 2.1:
 			return String(a)
 	return ""
+
+func _capilla_actual() -> Dictionary:
+	# El estado de Misa de la capilla en la que está el
+	# jugador ({} si no está en ninguna capilla).
+	if _en_interior == "sanmiguel":
+		return _misa
+	if _en_interior == "glera":
+		return _misa_glera
+	return {}
+
+func _sentarse_capilla(i: int) -> void:
+	# El jugador se sienta en un banco de la capilla, en
+	# uno de los huecos libres entre los fieles, mirando
+	# al altar. La postura la aplica _andar (la de los
+	# bancos de la calle, con _sentado).
+	var e := _capilla_actual()
+	if e.is_empty():
+		return
+	var asientos: Array = e.get("asientos_jugador", [])
+	if i < 0 or i >= asientos.size():
+		return
+	_postura = "sentado"
+	_postura_sitio = i
+	_sentado = true
+	_jugador.position = asientos[i]
+	_dir_jugador = PI
+	_jugador.rotation.y = PI
+	_actualizar_hud()
+
+func _arrodillarse_capilla() -> void:
+	# El jugador se pone de rodillas en el reclinatorio,
+	# mirando al altar. La postura la aplica _andar.
+	var e := _capilla_actual()
+	if e.is_empty():
+		return
+	_postura = "rodillas"
+	_arrodillado = true
+	_jugador.position = e["reclinatorio_jugador"]
+	_dir_jugador = PI
+	_jugador.rotation.y = PI
+	_actualizar_hud()
+
+func _levantarse_capilla() -> void:
+	# De vuelta a de pie: desde el banco, al sitio de
+	# detrás (el pasillo); desde el reclinatorio, un paso
+	# atrás.
+	var e := _capilla_actual()
+	if _postura == "sentado" and not e.is_empty():
+		var pies: Array = e.get("pies_jugador", [])
+		if _postura_sitio >= 0 and _postura_sitio < pies.size():
+			_jugador.position = pies[_postura_sitio]
+	elif _postura == "rodillas" and not e.is_empty():
+		var rec: Vector3 = e["reclinatorio_jugador"]
+		_jugador.position = Vector3(rec.x, 0.95, rec.z + 0.85)
+	_postura = ""
+	_postura_sitio = -1
+	_sentado = false
+	_arrodillado = false
+	_dir_jugador = PI
+	_jugador.rotation.y = PI
+	_actualizar_hud()
 
 func _entrar_interior(id: String) -> void:
 	var d: Dictionary = _interiores[id]
@@ -8097,6 +8478,11 @@ func _entrar_interior(id: String) -> void:
 	print("INTERIOR_ENTRA ", id)
 
 func _salir_interior() -> void:
+	if _postura != "":
+		_postura = ""
+		_postura_sitio = -1
+		_sentado = false
+		_arrodillado = false
 	_en_interior = ""
 	_jugador.position = _volver_a
 	_sonar("puerta_cerrar")
@@ -15378,6 +15764,8 @@ func _capturar_si_toca() -> void:
 		_probar_enamorados()
 	elif args.has("probar_capilla"):
 		_probar_capilla()
+	elif args.has("probar_glera"):
+		_probar_glera()
 	elif args.has("probar_ra"):
 		_probar_ra()
 	elif args.has("probar_decathlon"):
@@ -16478,6 +16866,7 @@ func _capturar_si_toca() -> void:
 		# Fuente de los Ilustres choca y su anillo no.
 		print("ISLAS_PRUEBA_OK pasa=", _choca(Vector2(-824.3, 254.2), 0.4) and not _choca(Vector2(-810.7, 254.2), 0.4), " islas=", _islas_rotonda.size())
 		print("CAPILLA_OK pasa=", _interiores.has("sanmiguel") and not _misa.is_empty() and (_misa["fieles"] as Array).size() == 20 and int(_misa["bancos"]) == 20, " salas=", _interiores.size())
+		print("GLERA_OK pasa=", _interiores.has("glera") and not _misa_glera.is_empty() and (_misa_glera["fieles"] as Array).size() == 12 and int(_misa_glera["bancos"]) == 12, " salas=", _interiores.size())
 		# Pasos por superficie: el centro de un tramo suena
 		# a asfalto y alguna celda del parque, a hierba.
 		var pasos_ok := _banco.size() >= 26 and not _seg_calles.is_empty()
