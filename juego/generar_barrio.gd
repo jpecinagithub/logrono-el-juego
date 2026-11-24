@@ -21,6 +21,7 @@ var _t_alturas: Array = []
 
 # Colisiones: polígonos de edificio indexados en una rejilla de 25 m
 var _poligonos: Array = []
+var _islas_rotonda: Array = []
 # Huellas que no deben chocar: suelos deportivos que dibuja
 # su hito (Las Norias) y que el Catastro trae como edificio.
 var _polys_muertos := {}
@@ -299,6 +300,7 @@ func _ready() -> void:
 	_cargar_partida()
 	_cargar_terreno()
 	_cargar_grafo()
+	_cargar_rotondas_islas()
 	_cargar_frentes()
 	_cargar_placas()
 	_camara_y_luz()
@@ -1278,56 +1280,170 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 			ant_di = di
 			ant_do = do2
 			primero = false
+	# Parche de cruce (revisión de cruces, 2026-11-24): las
+	# cintas de acera y bordillo de cada calle se dibujan
+	# rectas a través de los cruces, y pintaban bandas grises
+	# sobre el asfalto de la calle que cruza (capturas de Jon:
+	# «las franjas grises no tienen sentido»). En cada cruce
+	# se funde un disco de asfalto a +0,185 — sobre la acera
+	# (+0,17) — que tapa todo lo que cruce por dentro del
+	# cruce: aceras, bordillos, líneas y trazos centrales.
+	# Los pasos de cebra arrancan fuera del disco.
+	# Cruces AGRUPADOS (revisión de cruces, 2026-11-24): los
+	# extremos sueltos engañan. Una avenida de dos calzadas
+	# registra dos puntos a pocos metros, y cada uno pintaba
+	# su propio paso: de ahí los pasos cruzados en celosía
+	# de las capturas de Jon. Se agrupan los extremos a
+	# menos de 14 m en un solo cruce, con los brazos juntos
+	# y sin repetir dirección.
+	var cruces: Array = []
+	var asignado := {}
+	var claves_x: Array = extremos.keys()
+	for i in claves_x.size():
+		if asignado.has(claves_x[i]):
+			continue
+		var grupo: Array = []
+		var cola_x: Array = [claves_x[i]]
+		asignado[claves_x[i]] = true
+		while not cola_x.is_empty():
+			var ck: String = cola_x.pop_back()
+			grupo.append(ck)
+			var pk: Vector2 = extremos[ck]["pos"]
+			for j in claves_x.size():
+				if asignado.has(claves_x[j]):
+					continue
+				if pk.distance_to(extremos[claves_x[j]]["pos"]) < 14.0:
+					asignado[claves_x[j]] = true
+					cola_x.append(claves_x[j])
+		var cen_x := Vector2.ZERO
+		var peso_x := 0
+		var brazos_x: Array = []
+		for ck2 in grupo:
+			var ex: Dictionary = extremos[ck2]
+			cen_x += (ex["pos"] as Vector2) * int(ex["n"])
+			peso_x += int(ex["n"])
+			for br2 in ex["brazos"]:
+				var ya := false
+				for br3 in brazos_x:
+					if (br3["dir"] as Vector2).dot(br2["dir"]) > 0.90:
+						ya = true
+						if float(br2["ancho"]) > float(br3["ancho"]):
+							br3["ancho"] = br2["ancho"]
+				if not ya:
+					brazos_x.append({"dir": br2["dir"], "ancho": br2["ancho"], "clase": br2["clase"]})
+		if peso_x > 0:
+			cen_x /= float(peso_x)
+		var dist_x := 0.0
+		for ck3 in grupo:
+			dist_x = maxf(dist_x, cen_x.distance_to(extremos[ck3]["pos"]))
+		# ¿El cruce cae sobre una rotonda? Solo valen los
+		# brazos radiales (las entradas), no los tangentes
+		# del anillo, y el cruce no lleva parche.
+		var anillo_x := false
+		var radial_x := Vector2.ZERO
+		for isl in _islas_rotonda:
+			var cc2: Vector2 = isl[0]
+			if absf(cen_x.distance_to(cc2) - float(isl[1])) < 5.0:
+				anillo_x = true
+				radial_x = (cen_x - cc2).normalized()
+				break
+		cruces.append({"centro": cen_x, "brazos": brazos_x, "n": peso_x, "anillo": anillo_x, "radial": radial_x, "dist": dist_x})
+	# Parche de asfalto por cruce agrupado: tapa las
+	# cintas de acera y bordillo que atraviesan el cruce
+	# (a +0,185, sobre la acera) y las líneas que lo cruzan.
+	var npar := 0
+	for cruce in cruces:
+		if npar >= 40:
+			break
+		if bool(cruce["anillo"]) or int(cruce["n"]) < 3:
+			continue
+		var radio_p := float(cruce["dist"])
+		var clase_ok := false
+		for br in cruce["brazos"]:
+			radio_p = maxf(radio_p, float(cruce["dist"]) + float(br["ancho"]) * 0.5)
+			if ["primary", "secondary", "tertiary", "residential", "unclassified", "living_street"].has(String(br["clase"])):
+				clase_ok = true
+		if not clase_ok or radio_p < 2.0:
+			continue
+		var pos_p: Vector2 = cruce["centro"]
+		if _altura(pos_p.x, pos_p.y) > _altura_terreno(pos_p.x, pos_p.y) + 0.05:
+			continue  # sobre un puente no: el disco flotaría
+		radio_p += 0.55
+		var cen_p := Vector3(pos_p.x, _altura(pos_p.x, pos_p.y) + 0.185, pos_p.y)
+		var rim: Array = []
+		for s in 12:
+			var ang := TAU * float(s) / 12.0
+			var rp := pos_p + Vector2(cos(ang), sin(ang)) * radio_p
+			rim.append(Vector3(rp.x, _altura(rp.x, rp.y) + 0.185, rp.y))
+		for s in 12:
+			_tri(cv, cn, PackedColorArray(), cen_p, rim[s], rim[(s + 1) % 12], true, Color.WHITE)
+		npar += 1
 	cont.add_child(_malla_de(cv, cn, PackedColorArray(), Color(0.32, 0.32, 0.35)))
 	if sv.size() > 0:
 		cont.add_child(_malla_de(sv, sn, PackedColorArray(), Color(0.66, 0.64, 0.60)))
 	if bv.size() > 0:
 		cont.add_child(_malla_de(bv, bn, bc, Color.WHITE))
-	# Pasos de cebra: en los cruces (3+ tramos) con calle ancha, 5 franjas
-	# blancas fundidas en una sola malla por baldosa.
+	# Pasos de cebra con política conservadora (revisión
+	# de cruces): solo en cruces sencillos, como mucho 4
+	# brazos en 2 ejes. En los complejos no se pinta
+	# ninguno: un cruce sin paso se nota mucho menos que
+	# un paso en celosía. La pintura es plana, a ras de
+	# calzada (+0,098), y arranca fuera del cruce: tras
+	# la boca de la calle que cruza más 1,2 m.
 	var zv := PackedVector3Array()
 	var zn := PackedVector3Array()
 	var zc := PackedColorArray()
 	var nceb := 0
-	for clave_e in extremos:
+	for cruce in cruces:
 		if nceb >= 24:
 			break
-		var e: Dictionary = extremos[clave_e]
-		if int(e["n"]) < 3:
+		if int(cruce["n"]) < 3:
 			continue
-		var pos_e: Vector2 = e["pos"]
-		# Un paso por brazo del cruce (Tanda 14; antes solo el
-		# primer brazo y tope de 10 por baldosa).
-		var dirs_pintadas: Array = []
-		for brazo in e["brazos"]:
-			if nceb >= 24:
-				break
-			var ancho_e := float(brazo["ancho"])
-			if ancho_e < 6.0:
+		var pos_e: Vector2 = cruce["centro"]
+		var radial_c: Vector2 = cruce["radial"]
+		var brazos_t: Array = []
+		for brazo in cruce["brazos"]:
+			if float(brazo["ancho"]) < 6.0:
 				continue
 			if not ["primary", "secondary", "tertiary", "residential"].has(String(brazo["clase"])):
 				continue
+			if bool(cruce["anillo"]) and absf((brazo["dir"] as Vector2).dot(radial_c)) < 0.7:
+				continue  # tangente del anillo: no es una entrada
+			brazos_t.append(brazo)
+		if brazos_t.is_empty() or brazos_t.size() > 4:
+			continue
+		var ejes: Array = []
+		for brazo in brazos_t:
+			var en_eje := false
+			for ej in ejes:
+				if absf((brazo["dir"] as Vector2).dot(ej)) > 0.94:
+					en_eje = true
+			if not en_eje:
+				ejes.append(brazo["dir"])
+		if ejes.size() > 2:
+			continue
+		for brazo in brazos_t:
+			if nceb >= 24:
+				break
+			var ancho_e := float(brazo["ancho"])
 			var dir_c: Vector2 = brazo["dir"]
-			var repetido := false
-			for dp in dirs_pintadas:
-				if (dp as Vector2).dot(dir_c) > 0.98:
-					repetido = true
-			if repetido:
-				continue
-			dirs_pintadas.append(dir_c)
-			# El paso empieza FUERA del cruce (corrección tras la
-			# captura de Jon del 2026-11-24): antes las bandas
-			# arrancaban a 2,4 m del centro y en calles anchas
-			# caían dentro del cruce, cruzadas sobre las esquinas
-			# como losas grises. Ahora arrancan tras el borde de
-			# la calle que cruza (la más ancha perpendicular)
-			# más 1,2 m. Y son PINTURA plana a ras de calzada
-			# (+0,098, bajo la acera: lo que se pase queda
-			# escondido bajo ella), no cajas de 3 cm.
 			var off_e := 2.4
-			for otro in e["brazos"]:
-				if absf(dir_c.dot(otro["dir"])) < 0.5:
-					off_e = maxf(off_e, float(otro["ancho"]) * 0.5 + 1.2)
+			for otro in cruce["brazos"]:
+				var dpar := absf(dir_c.dot(otro["dir"]))
+				if dpar < 0.92:
+					# La boca de una calle en diagonal es
+					# más ancha a lo largo del brazo: se
+					# proyecta por el seno del ángulo.
+					var seno := maxf(sqrt(1.0 - dpar * dpar), 0.45)
+					off_e = maxf(off_e, float(otro["ancho"]) * 0.5 / seno + 1.2)
+			off_e = maxf(off_e, float(cruce["dist"]) + 1.6)
+			if not bool(cruce["anillo"]):
+				# Ni bajo el parche: el disco llega a dist +
+				# semiancho mayor + 0,55 desde el centro.
+				var radio_c := float(cruce["dist"]) + 0.55
+				for otro2 in cruce["brazos"]:
+					radio_c = maxf(radio_c, float(cruce["dist"]) + float(otro2["ancho"]) * 0.5 + 0.55)
+				off_e = maxf(off_e, radio_c + 0.35)
 			var perp_e := Vector2(-dir_c.y, dir_c.x)
 			var mitad_e := ancho_e * 0.39
 			for k in 5:
@@ -1360,6 +1476,37 @@ func _cargar_grafo() -> void:
 		_ady[i].append([j, d])
 		_ady[j].append([i, d])
 	print("GRAFO_OK nodos=", _nodos.size())
+
+func _cargar_rotondas_islas() -> void:
+	# Las islas de las rotondas son suelo elevado (fuente,
+	# jardín o gravilla): ni el coche ni el peatón deben
+	# atravesarlas (Jon, 2026-11-24: entró con el coche
+	# hasta el centro de la Fuente de los Ilustres). Se
+	# registra un polígono por isla en la rejilla de
+	# colisión (el radio del anillo menos la calzada) y la
+	# lista queda guardada para que el constructor de
+	# calles reconozca los cruces que caen sobre un anillo.
+	var ruta := "res://datos/ciudad/rotondas.json"
+	if not FileAccess.file_exists(ruta):
+		return
+	var datos_r = JSON.parse_string(FileAccess.get_file_as_string(ruta))
+	if datos_r == null:
+		return
+	var n := 0
+	for r in datos_r:
+		var cen := Vector2(float(r["centro"][0]), float(r["centro"][1]))
+		var radio := float(r["radio"])
+		_islas_rotonda.append([cen, radio])
+		var radio_i := radio - 3.8
+		if radio_i < 2.5:
+			continue
+		var poly := PackedVector2Array()
+		for s in 14:
+			var a := TAU * float(s) / 14.0
+			poly.append(cen + Vector2(cos(a), sin(a)) * radio_i)
+		_registrar_poly(poly)
+		n += 1
+	print("ISLAS_OK rotondas=", n)
 
 func _nodo_cercano(p: Vector2) -> int:
 	var mejor := -1
@@ -15911,6 +16058,9 @@ func _capturar_si_toca() -> void:
 			banco_ok = _choca_entidad(Vector2(a0p.x, a0p.z), 0.4, _jugador)
 		var libre_ok := not _choca_entidad(Vector2(_jugador.position.x, _jugador.position.z), 0.4, _jugador)
 		print("SOLIDOS_OK n=", _solidos.size(), " banco_bloquea=", banco_ok, " spawn_libre=", libre_ok)
+		# Las islas de rotonda bloquean: el centro de la
+		# Fuente de los Ilustres choca y su anillo no.
+		print("ISLAS_PRUEBA_OK pasa=", _choca(Vector2(-824.3, 254.2), 0.4) and not _choca(Vector2(-810.7, 254.2), 0.4), " islas=", _islas_rotonda.size())
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
