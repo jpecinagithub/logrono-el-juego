@@ -4574,6 +4574,7 @@ var _panel_carr_lista: VBoxContainer = null
 var _panel_carr_abierto := false
 var _gim_t := 0.0
 var _interiores := {}
+var _misa := {}
 var _tenderos: Array = []
 var _volver_a := Vector3.ZERO
 var _ancla_minimapa := Vector2.ZERO
@@ -6173,6 +6174,7 @@ func _physics_process(delta: float) -> void:
 				_nadando = true
 	_comprobar_salida_interior()
 	_actualizar_tenderos(delta)
+	_actualizar_misa(delta)
 	# Rastro del recorrido (para el mapa) y peatones. Dentro de un
 	# interior no se anota: las salas viven lejos de la ciudad y el
 	# mapa dibujaba una recta imposible hasta ellas.
@@ -7256,6 +7258,7 @@ func _crear_interiores() -> void:
 		_interiores[id_t]["tendero_d"] = per_t
 		_tenderos.append(raiz_t)
 	_crear_mall()
+	_crear_capilla()
 	print("INTERIORES_OK salas=", _interiores.size())
 
 func _tiendas_mall() -> Dictionary:
@@ -7400,6 +7403,280 @@ func _escaleras_mall(v: PackedVector3Array, n: PackedVector3Array, c: PackedColo
 		_caja_en(v, n, c, centro + Vector3(x0 + float(i) * 1.15 + 0.575, alt / 2.0, z0), Vector3(1.15, alt, 4.4), col_e, 0.0)
 	_caja_en(v, n, c, centro + Vector3(x0 + 12.5, 4.23 - 0.15, z0), Vector3(4.6, 0.3, 4.4), col_e, 0.0)
 	_registrar_rect(centro, Vector2(x0 + 7.3, z0), Vector2(15.2, 4.4))
+
+func _crear_capilla() -> void:
+	# La capilla de San Miguel (pedido de Jon, 2026-11-24):
+	# la iglesia de San Miguel Arcángel (-1541, 403) se
+	# puede entrar, y dentro se está celebrando la Santa
+	# Misa: 20 bancos, 20 fieles, el presbiterio elevado
+	# con su altar, el sacerdote celebrando (levanta las
+	# manos en las oraciones y se inclina), un lector que
+	# sube al ambón a leer y la asamblea que se levanta y
+	# se sienta a la vez. La celebración vive en
+	# _actualizar_misa, con su ciclo de fases de 80 s.
+	var centro := Vector3(4700, 0, 5000)
+	var hx := 9.0
+	var hz := 14.0
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var c := PackedColorArray()
+	var pared := Color(0.87, 0.83, 0.76)
+	var piedra := Color(0.66, 0.63, 0.58)
+	# Suelo de piedra y la alfombra central, de la puerta
+	# al presbiterio.
+	_caja_en(v, n, c, centro + Vector3(0, -0.06, 0), Vector3(2 * hx + 1.4, 0.12, 2 * hz + 1.4), piedra, 0.0)
+	_caja_en(v, n, c, centro + Vector3(0, 0.012, 1.5), Vector3(2.3, 0.025, 24.5), Color(0.48, 0.17, 0.19), 0.0)
+	# Paredes de 5,2 m: una iglesia, no una tienda. La
+	# puerta va en la pared sur, como en las demás salas.
+	_caja_en(v, n, c, centro + Vector3(0, 2.6, -hz), Vector3(2 * hx + 0.35, 5.2, 0.35), pared, 0.0)
+	_caja_en(v, n, c, centro + Vector3(-hx, 2.6, 0), Vector3(0.35, 5.2, 2 * hz), pared, 0.0)
+	_caja_en(v, n, c, centro + Vector3(hx, 2.6, 0), Vector3(0.35, 5.2, 2 * hz), pared, 0.0)
+	var tramo := hx - 0.8
+	_caja_en(v, n, c, centro + Vector3(-(0.8 + tramo / 2.0), 2.6, hz), Vector3(tramo, 5.2, 0.35), pared, 0.0)
+	_caja_en(v, n, c, centro + Vector3(0.8 + tramo / 2.0, 2.6, hz), Vector3(tramo, 5.2, 0.35), pared, 0.0)
+	_registrar_rect(centro, Vector2(0, -hz), Vector2(2 * hx + 0.35, 0.35))
+	_registrar_rect(centro, Vector2(-hx, 0), Vector2(0.35, 2 * hz))
+	_registrar_rect(centro, Vector2(hx, 0), Vector2(0.35, 2 * hz))
+	_registrar_rect(centro, Vector2(-(0.8 + tramo / 2.0), hz), Vector2(tramo, 0.35))
+	_registrar_rect(centro, Vector2(0.8 + tramo / 2.0, hz), Vector2(tramo, 0.35))
+	# Columnas y vidrieras de colores en los laterales.
+	for lado in [-1.0, 1.0]:
+		for cz in [-6.0, 0.0, 6.0]:
+			_mueble(v, n, c, centro, Vector3(8.15 * lado, 2.6, cz), Vector3(0.55, 5.2, 0.55), Color(0.74, 0.71, 0.66))
+		var cols_v := [Color(0.32, 0.47, 0.95), Color(0.88, 0.32, 0.30), Color(0.95, 0.72, 0.28)]
+		for vi in 3:
+			_mueble(v, n, c, centro, Vector3(8.78 * lado, 3.6, -6.0 + vi * 6.0), Vector3(0.06, 1.7, 1.3), cols_v[vi], false)
+	# El presbiterio: elevado, con su panel de fondo y la
+	# cruz grande, para que se distinga de la nave.
+	_mueble(v, n, c, centro, Vector3(0, 0.09, -11.5), Vector3(2 * hx, 0.18, 5.0), Color(0.72, 0.69, 0.64))
+	_mueble(v, n, c, centro, Vector3(0, 2.1, -13.85), Vector3(6.4, 4.2, 0.18), Color(0.46, 0.19, 0.21), false)
+	_mueble(v, n, c, centro, Vector3(0, 3.05, -13.7), Vector3(0.20, 2.3, 0.10), Color(0.38, 0.24, 0.12), false)
+	_mueble(v, n, c, centro, Vector3(0, 3.45, -13.7), Vector3(1.15, 0.20, 0.10), Color(0.38, 0.24, 0.12), false)
+	# El altar: mesa con mantel blanco, frontal dorado, el
+	# crucifijo y dos velas encendidas.
+	_mueble(v, n, c, centro, Vector3(0, 0.66, -12.4), Vector3(2.7, 0.95, 1.15), Color(0.93, 0.92, 0.89))
+	_mueble(v, n, c, centro, Vector3(0, 1.17, -12.4), Vector3(2.9, 0.07, 1.3), Color(0.96, 0.95, 0.93), false)
+	_mueble(v, n, c, centro, Vector3(0, 0.63, -11.79), Vector3(2.7, 0.62, 0.05), Color(0.78, 0.62, 0.25), false)
+	_mueble(v, n, c, centro, Vector3(0.95, 1.46, -12.4), Vector3(0.16, 0.06, 0.16), Color(0.55, 0.42, 0.18), false)
+	_mueble(v, n, c, centro, Vector3(0.95, 1.73, -12.4), Vector3(0.045, 0.48, 0.045), Color(0.78, 0.62, 0.25), false)
+	_mueble(v, n, c, centro, Vector3(0.95, 1.80, -12.4), Vector3(0.24, 0.045, 0.045), Color(0.78, 0.62, 0.25), false)
+	for lado in [-1.0, 1.0]:
+		_mueble(v, n, c, centro, Vector3(1.25 * lado, 1.38, -12.4), Vector3(0.05, 0.34, 0.05), Color(0.93, 0.92, 0.88), false)
+		_bola_en(v, n, c, centro + Vector3(1.25 * lado, 1.62, -12.4), 0.05, Color(1.0, 0.82, 0.45), lado * 3.0, 0.9)
+	# El ambón, a la izquierda del presbiterio, con el
+	# leccionario abierto encima.
+	_mueble(v, n, c, centro, Vector3(-3.6, 0.76, -10.6), Vector3(0.6, 1.16, 0.55), Color(0.45, 0.32, 0.19))
+	_mueble(v, n, c, centro, Vector3(-3.6, 1.37, -10.6), Vector3(0.78, 0.07, 0.68), Color(0.52, 0.38, 0.23), false)
+	_mueble(v, n, c, centro, Vector3(-3.6, 1.44, -10.6), Vector3(0.5, 0.05, 0.4), Color(0.90, 0.88, 0.84), false)
+	# La sede del celebrante y la pila bautismal.
+	_mueble(v, n, c, centro, Vector3(3.6, 0.73, -13.0), Vector3(0.7, 1.1, 0.6), Color(0.45, 0.32, 0.19))
+	_mueble(v, n, c, centro, Vector3(5.8, 0.45, 11.8), Vector3(0.8, 0.9, 0.8), piedra)
+	_bola_en(v, n, c, centro + Vector3(5.8, 0.98, 11.8), 0.30, Color(0.55, 0.65, 0.75), 2.0, 0.55)
+	# Los 20 bancos: dos bloques de diez filas, con su
+	# respaldo y su reclinatorio.
+	var madera := Color(0.42, 0.30, 0.18)
+	var nbancos := 0
+	for lado in [-1.0, 1.0]:
+		for fila in 10:
+			var bz := -8.2 + fila * 1.5
+			var bx: float = 3.6 * lado
+			_mueble(v, n, c, centro, Vector3(bx, 0.45, bz), Vector3(5.0, 0.12, 0.52), madera)
+			_mueble(v, n, c, centro, Vector3(bx, 0.82, bz + 0.30), Vector3(5.0, 0.62, 0.10), madera, false)
+			_mueble(v, n, c, centro, Vector3(bx - 2.25, 0.21, bz), Vector3(0.14, 0.42, 0.46), madera, false)
+			_mueble(v, n, c, centro, Vector3(bx + 2.25, 0.21, bz), Vector3(0.14, 0.42, 0.46), madera, false)
+			_mueble(v, n, c, centro, Vector3(bx, 0.10, bz - 0.62), Vector3(5.0, 0.20, 0.22), madera, false)
+			nbancos += 1
+	var nodo_c := Node3D.new()
+	nodo_c.add_child(_malla_de(v, n, c, Color.WHITE))
+	add_child(nodo_c)
+	# Los 20 fieles: uno por banco, sentados mirando al
+	# altar, cada uno en su sitio del banco.
+	var camisas_f := [Color(0.55, 0.30, 0.28), Color(0.25, 0.38, 0.60), Color(0.30, 0.50, 0.32), Color(0.60, 0.52, 0.38), Color(0.45, 0.35, 0.55), Color(0.70, 0.62, 0.55), Color(0.35, 0.45, 0.50), Color(0.62, 0.40, 0.30)]
+	var pelos_f := [Color(0.16, 0.11, 0.07), Color(0.35, 0.24, 0.14), Color(0.62, 0.55, 0.45), Color(0.10, 0.09, 0.08), Color(0.45, 0.30, 0.16)]
+	var fieles: Array = []
+	var k := 0
+	for lado in [-1.0, 1.0]:
+		for fila in 10:
+			var bz2 := -8.2 + fila * 1.5
+			var bx2: float = 3.6 * lado
+			var desf: float = [-1.7, -0.55, 0.6, 1.7][k % 4]
+			var per := _hacer_persona(camisas_f[k % camisas_f.size()], Color(0.24, 0.25, 0.30), pelos_f[k % pelos_f.size()], false, k % 3 == 1, {"talla": 0.94 + 0.02 * (k % 4), "pelo_estilo": ["corto", "melena", "corto", "coleta", "calvo", "mono"][k % 6], "falda": k % 5 == 3})
+			var raiz: Node3D = per["raiz"]
+			var asiento := centro + Vector3(bx2 + desf, 0.55, bz2 - 0.05)
+			raiz.position = asiento
+			raiz.rotation.y = PI
+			(per["pi"] as Node3D).rotation.x = -1.25
+			(per["pd"] as Node3D).rotation.x = -1.25
+			add_child(raiz)
+			fieles.append({"d": per, "raiz": raiz, "asiento": asiento, "pie": centro + Vector3(bx2 + desf, 0.95, bz2 + 0.68), "f": 0.0})
+			k += 1
+	# El sacerdote, tras el altar mirando a la asamblea:
+	# casulla verde sobre el alba blanca.
+	var cura := _hacer_persona(Color(0.16, 0.42, 0.24), Color(0.90, 0.89, 0.85), Color(0.78, 0.78, 0.78), true, false, {"talla": 1.0})
+	var raiz_c: Node3D = cura["raiz"]
+	raiz_c.position = centro + Vector3(0, 0.18 + 0.95, -13.6)
+	add_child(raiz_c)
+	var ambon := centro + Vector3(-3.6, 0.18 + 0.95, -10.15)
+	_misa = {"t": 0.0, "fieles": fieles, "cura": cura, "brazos": 0.0, "inclina": 0.0, "bancos": nbancos, "centro": centro, "ambon": ambon, "lector_idx": 3,
+		"ruta": [fieles[3]["pie"], centro + Vector3(-0.85, 0.95, -3.02), centro + Vector3(-0.85, 0.18 + 0.95, -10.15), ambon]}
+	# La puerta, en la iglesia de verdad: su punto del
+	# mapa, con el marcador y el rótulo de las salas.
+	var fuera := _punto_libre(Vector3(-1541.1, 0, 403.5), 0.5)
+	fuera.y = _altura_terreno(fuera.x, fuera.z)
+	_marcador(fuera, Color(0.85, 0.72, 0.40), true, 0.6, true)
+	var et := Label3D.new()
+	et.text = "Iglesia de San Miguel"
+	et.font_size = 96
+	et.pixel_size = 0.012
+	et.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	et.modulate = Color(0.85, 0.72, 0.40)
+	et.outline_size = 10
+	et.outline_modulate = Color(0.05, 0.05, 0.08)
+	et.position = fuera + Vector3(0, 6.5, 0)
+	add_child(et)
+	_interiores["sanmiguel"] = {"nombre": "Iglesia de San Miguel", "fuera": fuera, "dentro": centro + Vector3(0, 0, hz - 1.7), "centro": centro, "tam": Vector2(2 * hx, 2 * hz), "acciones": {}}
+	print("CAPILLA_OK fieles=", fieles.size(), " bancos=", nbancos)
+
+func _aplicar_postura(fl: Dictionary) -> void:
+	# Entre sentado en el banco (f=0) y de pie tras él
+	# (f=1): la raíz se desplaza y sube, las piernas se
+	# estiran. La usa la asamblea entera y el lector.
+	var f := float(fl["f"])
+	var raiz: Node3D = fl["raiz"]
+	raiz.position = (fl["asiento"] as Vector3).lerp(fl["pie"], f)
+	var d: Dictionary = fl["d"]
+	(d["pi"] as Node3D).rotation.x = -1.25 * (1.0 - f)
+	(d["pd"] as Node3D).rotation.x = -1.25 * (1.0 - f)
+
+func _actualizar_misa(delta: float) -> void:
+	# El ciclo de la Misa de San Miguel (80 s): la
+	# asamblea se levanta y se sienta a la vez dos veces,
+	# el sacerdote levanta las manos en las oraciones y
+	# se inclina al final, y entre medias el lector sube
+	# al ambón, lee y vuelve a su banco.
+	if _misa.is_empty():
+		return
+	_misa["t"] = float(_misa["t"]) + delta
+	var t := fmod(float(_misa["t"]), 80.0)
+	var asamblea := 0.0
+	if (t >= 14.0 and t < 26.0) or (t >= 56.0 and t < 66.0):
+		asamblea = 1.0
+	var cura: Dictionary = _misa["cura"]
+	var brazos_obj := 0.0
+	if (t >= 16.0 and t < 24.0) or (t >= 58.0 and t < 64.0):
+		brazos_obj = 1.0
+	_misa["brazos"] = lerpf(float(_misa["brazos"]), brazos_obj, clampf(delta * 2.0, 0.0, 1.0))
+	var b := float(_misa["brazos"])
+	(cura["bi"] as Node3D).rotation.z = -0.95 * b
+	(cura["bd"] as Node3D).rotation.z = 0.95 * b
+	(cura["bi"] as Node3D).rotation.x = -0.30 * b
+	(cura["bd"] as Node3D).rotation.x = -0.30 * b
+	if cura["ci"] != null:
+		(cura["ci"] as Node3D).rotation.x = -0.35 * b
+		(cura["cd"] as Node3D).rotation.x = -0.35 * b
+	var incl_obj := 1.0 if (t >= 70.0 and t < 76.0) else 0.0
+	_misa["inclina"] = lerpf(float(_misa["inclina"]), incl_obj, clampf(delta * 1.6, 0.0, 1.0))
+	(cura["cabeza"] as Node3D).rotation.x = 0.38 * float(_misa["inclina"])
+	var fieles: Array = _misa["fieles"]
+	var idx_l := int(_misa["lector_idx"])
+	for i in fieles.size():
+		if i == idx_l:
+			continue
+		var fl: Dictionary = fieles[i]
+		var vel := 1.9 - 0.05 * (i % 5)
+		fl["f"] = lerpf(float(fl["f"]), asamblea, clampf(delta * vel, 0.0, 1.0))
+		_aplicar_postura(fl)
+	_actualizar_lector(delta, t)
+
+func _actualizar_lector(delta: float, t: float) -> void:
+	# El lector es uno de los fieles (el del pasillo, fila
+	# 3): con la asamblea hace lo que todos; en su momento
+	# (t 28-54) se levanta solo, va por el pasillo al
+	# ambón, lee de cara a la asamblea y vuelve a su sitio.
+	var fieles: Array = _misa["fieles"]
+	var fl: Dictionary = fieles[int(_misa["lector_idx"])]
+	var raiz: Node3D = fl["raiz"]
+	var d: Dictionary = fl["d"]
+	if t < 28.0 or t >= 54.0:
+		var asamblea := 1.0 if ((t >= 14.0 and t < 26.0) or (t >= 56.0 and t < 66.0)) else 0.0
+		fl["f"] = lerpf(float(fl["f"]), asamblea, clampf(delta * 1.9, 0.0, 1.0))
+		_aplicar_postura(fl)
+		raiz.rotation.y = PI
+		(d["cabeza"] as Node3D).rotation.x = 0.0
+		return
+	if (t >= 28.0 and t < 29.0) or (t >= 53.0 and t < 54.0):
+		var obj := 1.0 if t < 29.0 else 0.0
+		fl["f"] = lerpf(float(fl["f"]), obj, clampf(delta * 2.2, 0.0, 1.0))
+		_aplicar_postura(fl)
+		raiz.rotation.y = PI
+		(d["cabeza"] as Node3D).rotation.x = 0.0
+		return
+	fl["f"] = 1.0
+	var ruta: Array = _misa["ruta"]
+	var total := 0.0
+	for i in range(1, ruta.size()):
+		total += (ruta[i] as Vector3).distance_to(ruta[i - 1])
+	var dist_obj := total
+	if t < 37.0:
+		dist_obj = total * clampf((t - 29.0) / 8.0, 0.0, 1.0)
+	elif t >= 45.0:
+		dist_obj = total * (1.0 - clampf((t - 45.0) / 8.0, 0.0, 1.0))
+	var restante := dist_obj
+	var pos: Vector3 = ruta[0]
+	var dir := Vector3(0, 0, -1)
+	for i in range(1, ruta.size()):
+		var a: Vector3 = ruta[i - 1]
+		var b2: Vector3 = ruta[i]
+		var seg := a.distance_to(b2)
+		if restante <= seg:
+			pos = a.lerp(b2, 0.0 if seg <= 0.0 else restante / seg)
+			dir = (b2 - a).normalized()
+			break
+		restante -= seg
+		pos = b2
+		dir = (b2 - a).normalized()
+	raiz.position = pos
+	var andando := (t < 37.0 and dist_obj < total - 0.01) or (t >= 45.0 and dist_obj > 0.01)
+	if andando:
+		raiz.rotation.y = atan2(dir.x, dir.z)
+		var balanceo := sin(dist_obj * 4.0) * 0.5
+		(d["pi"] as Node3D).rotation.x = balanceo
+		(d["pd"] as Node3D).rotation.x = -balanceo
+		(d["bi"] as Node3D).rotation.x = -balanceo * 0.35
+		(d["bd"] as Node3D).rotation.x = balanceo * 0.35
+		(d["cabeza"] as Node3D).rotation.x = 0.0
+	else:
+		# Leyendo en el ambón, de cara a la asamblea.
+		raiz.rotation.y = 0.0
+		(d["pi"] as Node3D).rotation.x = 0.0
+		(d["pd"] as Node3D).rotation.x = 0.0
+		(d["bi"] as Node3D).rotation.x = 0.0
+		(d["bd"] as Node3D).rotation.x = 0.0
+		(d["cabeza"] as Node3D).rotation.x = 0.28
+
+func _probar_capilla() -> void:
+	var pasa := _interiores.has("sanmiguel") and not _misa.is_empty()
+	# La entrada de verdad: de pie en la puerta de la
+	# iglesia, la detección tiene que ofrecer San Miguel.
+	_jugador.position = (_interiores["sanmiguel"]["fuera"] as Vector3) + Vector3(0, 0.95, 0)
+	pasa = pasa and _puerta_cercana() == "sanmiguel"
+	_entrar_interior("sanmiguel")
+	pasa = pasa and _en_interior == "sanmiguel"
+	_salir_interior()
+	pasa = pasa and _en_interior == ""
+	pasa = pasa and (_misa["fieles"] as Array).size() == 20 and int(_misa["bancos"]) == 20
+	_misa["t"] = 17.0
+	for i in 30:
+		_actualizar_misa(0.1)
+	var f0 := float((_misa["fieles"] as Array)[0]["f"])
+	pasa = pasa and f0 > 0.8 and float(_misa["brazos"]) > 0.7
+	_misa["t"] = 27.0
+	for i in 135:
+		_actualizar_misa(0.1)
+	var raiz_l: Node3D = (_misa["fieles"] as Array)[int(_misa["lector_idx"])]["raiz"]
+	var amb: Vector3 = _misa["ambon"]
+	pasa = pasa and Vector2(raiz_l.position.x - amb.x, raiz_l.position.z - amb.z).length() < 0.6
+	print("CAPILLA_PRUEBA_OK pasa=", pasa, " fieles=", (_misa["fieles"] as Array).size(), " de_pie=", f0, " brazos=", float(_misa["brazos"]))
 
 func _crear_mall() -> void:
 	# El Centro Comercial Berceo por dentro: dos plantas (dos salas
@@ -14962,6 +15239,8 @@ func _capturar_si_toca() -> void:
 		_probar_lineas()
 	elif args.has("probar_enamorados"):
 		_probar_enamorados()
+	elif args.has("probar_capilla"):
+		_probar_capilla()
 	elif args.has("probar_ra"):
 		_probar_ra()
 	elif args.has("probar_decathlon"):
@@ -16061,6 +16340,7 @@ func _capturar_si_toca() -> void:
 		# Las islas de rotonda bloquean: el centro de la
 		# Fuente de los Ilustres choca y su anillo no.
 		print("ISLAS_PRUEBA_OK pasa=", _choca(Vector2(-824.3, 254.2), 0.4) and not _choca(Vector2(-810.7, 254.2), 0.4), " islas=", _islas_rotonda.size())
+		print("CAPILLA_OK pasa=", _interiores.has("sanmiguel") and not _misa.is_empty() and (_misa["fieles"] as Array).size() == 20 and int(_misa["bancos"]) == 20, " salas=", _interiores.size())
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
