@@ -357,19 +357,25 @@ func _cargar_terreno() -> void:
 func _color_edificio(plantas: int, centro: Vector2) -> Color:
 	# Paleta de fachadas: cada edificio coge un tono según su posición,
 	# para que ninguna calle sea de un solo color.
+	# Paleta disciplinada (Tanda 13): mandan arena, blanco, crema y
+	# piedra; el ladrillo suave es el único acento (1 de 10) y la
+	# variación de tono es corta. Antes había 8 tonos con ladrillo
+	# y salmón saturados: cada calle salía de un color distinto.
 	var paleta := [
 		Color(0.93, 0.82, 0.64),  # arena
-		Color(0.74, 0.44, 0.33),  # ladrillo
-		Color(0.89, 0.69, 0.43),  # ocre
 		Color(0.93, 0.91, 0.87),  # blanco
-		Color(0.79, 0.79, 0.81),  # gris
-		Color(0.87, 0.60, 0.47),  # salmón
 		Color(0.94, 0.88, 0.71),  # crema
 		Color(0.84, 0.78, 0.68),  # piedra
+		Color(0.93, 0.82, 0.64),  # arena
+		Color(0.94, 0.88, 0.71),  # crema
+		Color(0.88, 0.72, 0.50),  # ocre suave
+		Color(0.82, 0.82, 0.84),  # gris claro
+		Color(0.93, 0.91, 0.87),  # blanco
+		Color(0.78, 0.52, 0.40),  # ladrillo suave
 	]
 	var h: float = fposmod(sin(centro.x * 12.9898 + centro.y * 78.233) * 43758.5453, 1.0)
-	var base: Color = paleta[int(h * 8.0) % 8]
-	var f: float = 0.92 + 0.16 * fposmod(h * 7.31, 1.0)
+	var base: Color = paleta[int(h * 10.0) % 10]
+	var f: float = 0.95 + 0.08 * fposmod(h * 7.31, 1.0)
 	return Color(base.r * f, base.g * f, base.b * f)
 
 func _variante_edificio(centro: Vector2) -> int:
@@ -388,47 +394,129 @@ func _color_techo(centro: Vector2, color: Color) -> Color:
 
 # Fachadas dibujadas por código, en 3 variantes según el edificio:
 # 0 clásica, 1 con balcones, 2 ventana estrecha con contraventanas.
-# Fondo claro (lo tiñe el color de cada edificio) y retícula 4×4.
+# Receta Badajoz (Tanda 13): 512 px por baldosa de 12 m, marcos
+# BLANCOS, banda blanca en cada línea de planta con su sombra
+# fina, cristal azul grisáceo con brillo, persianas verde gris
+# en algunas ventanas y muy pocas encendidas (de día, el 20 %
+# de antes salpicaba la calle de cuadrados naranjas). El fondo
+# (0,88) lo tiñe el color de cada edificio; la banda y los
+# marcos van casi a blanco para que destaquen sobre el tinte.
 func _textura_fachada(variante := 0) -> Texture2D:
-	var img := Image.create(256, 256, false, Image.FORMAT_RGB8)
-	img.fill(Color(0.96, 0.94, 0.90))
-	var marco := Color(0.55, 0.52, 0.48)
-	var cristal := Color(0.15, 0.20, 0.27)
-	var brillo := Color(0.38, 0.46, 0.55)
-	var persiana := Color(0.45, 0.44, 0.40)
+	if _tex_fachadas.has(variante):
+		return _tex_fachadas[variante]
+	var img := Image.create(512, 512, false, Image.FORMAT_RGB8)
+	img.fill(Color(0.76, 0.74, 0.70))
+	var marco := Color(0.97, 0.96, 0.94)
+	var cristal := Color(0.18, 0.23, 0.30)
+	var brillo := Color(0.36, 0.45, 0.56)
+	var persiana := Color(0.60, 0.62, 0.57)
+	var persiana_osc := Color(0.50, 0.52, 0.47)
+	var sombra := Color(0.58, 0.56, 0.52)
 	for fy in 4:
 		for fx in 4:
-			var x0 := fx * 64
-			var y0 := fy * 64
-			var cerrada := (fx * 4 + fy) % 5 == 0
-			var encendida := fposmod(sin((fx * 3 + variante * 7) * 12.9898 + fy * 78.233) * 43758.5453, 1.0) < 0.20
+			var x0 := fx * 128
+			var y0 := fy * 128
+			# La banda de planta y su sombra, arriba de cada celda.
+			img.fill_rect(Rect2i(x0, y0, 128, 9), Color(1.0, 0.99, 0.97))
+			img.fill_rect(Rect2i(x0, y0 + 9, 128, 3), sombra)
+			var hv := fposmod(sin((fx * 7 + variante * 13 + fy * 3) * 12.9898 + fy * 78.233) * 43758.5453, 1.0)
+			var cerrada := hv < 0.08
+			var con_persiana := hv >= 0.08 and hv < 0.26
+			var encendida := hv >= 0.26 and hv < 0.32
 			if variante == 2:
-				img.fill_rect(Rect2i(x0 + 14, y0 + 10, 36, 40), Color(0.42, 0.48, 0.42))
-				img.fill_rect(Rect2i(x0 + 21, y0 + 10, 22, 40), marco)
+				# Contraventanas de lamas, verde apagado.
+				img.fill_rect(Rect2i(x0 + 28, y0 + 24, 72, 88), Color(0.58, 0.61, 0.55))
+				for ly in 4:
+					img.fill_rect(Rect2i(x0 + 32, y0 + 33 + ly * 20, 64, 3), Color(0.50, 0.53, 0.47))
+				img.fill_rect(Rect2i(x0 + 46, y0 + 24, 36, 88), marco)
+				var gx2 := x0 + 51
+				var gy2 := y0 + 29
 				if cerrada:
-					img.fill_rect(Rect2i(x0 + 24, y0 + 13, 16, 34), persiana)
+					img.fill_rect(Rect2i(gx2, gy2, 26, 78), persiana)
+					for ly2 in 4:
+						img.fill_rect(Rect2i(gx2, gy2 + 8 + ly2 * 18, 26, 3), persiana_osc)
 				elif encendida:
-					img.fill_rect(Rect2i(x0 + 24, y0 + 13, 16, 34), Color(0.98, 0.76, 0.42))
-					img.fill_rect(Rect2i(x0 + 24, y0 + 13, 16, 9), Color(0.85, 0.58, 0.30))
+					img.fill_rect(Rect2i(gx2, gy2, 26, 78), Color(0.90, 0.68, 0.42))
+					img.fill_rect(Rect2i(gx2, gy2, 26, 20), Color(0.78, 0.53, 0.30))
 				else:
-					img.fill_rect(Rect2i(x0 + 24, y0 + 13, 16, 34), cristal)
-					img.fill_rect(Rect2i(x0 + 24, y0 + 13, 16, 10), brillo)
+					img.fill_rect(Rect2i(gx2, gy2, 26, 78), cristal)
+					img.fill_rect(Rect2i(gx2, gy2, 13, 30), brillo)
+					if con_persiana:
+						img.fill_rect(Rect2i(gx2, gy2, 26, 40), persiana)
+						for ly3 in 3:
+							img.fill_rect(Rect2i(gx2, gy2 + 7 + ly3 * 12, 26, 3), persiana_osc)
+				img.fill_rect(Rect2i(x0 + 41, y0 + 112, 46, 6), marco)
+				img.fill_rect(Rect2i(x0 + 41, y0 + 118, 46, 3), sombra)
 			else:
-				img.fill_rect(Rect2i(x0 + 16, y0 + 10, 32, 40), marco)
+				var ancho_v := 80
+				var alto_v := 104 if variante == 1 else 96
+				img.fill_rect(Rect2i(x0 + 24, y0 + 20, ancho_v, alto_v), marco)
+				var gx := x0 + 33
+				var gy := y0 + 29
+				var gw := ancho_v - 18
+				var gh := alto_v - 18
 				if cerrada:
-					img.fill_rect(Rect2i(x0 + 19, y0 + 13, 26, 34), persiana)
+					img.fill_rect(Rect2i(gx, gy, gw, gh), persiana)
+					for ly4 in 5:
+						img.fill_rect(Rect2i(gx, gy + 9 + ly4 * 17, gw, 3), persiana_osc)
 				elif encendida:
-					img.fill_rect(Rect2i(x0 + 19, y0 + 13, 26, 34), Color(0.98, 0.76, 0.42))
-					img.fill_rect(Rect2i(x0 + 19, y0 + 13, 26, 10), Color(0.85, 0.58, 0.30))
+					img.fill_rect(Rect2i(gx, gy, gw, gh), Color(0.90, 0.68, 0.42))
+					img.fill_rect(Rect2i(gx, gy, gw, 24), Color(0.78, 0.53, 0.30))
 				else:
-					img.fill_rect(Rect2i(x0 + 19, y0 + 13, 26, 34), cristal)
-					img.fill_rect(Rect2i(x0 + 19, y0 + 13, 26, 10), brillo)
-				if variante == 1:
-					# Balcón: barandilla y losa bajo la ventana
-					for bx in 5:
-						img.fill_rect(Rect2i(x0 + 14 + bx * 9, y0 + 42, 2, 12), Color(0.25, 0.25, 0.27))
-					img.fill_rect(Rect2i(x0 + 10, y0 + 54, 44, 5), Color(0.78, 0.76, 0.72))
-	return ImageTexture.create_from_image(img)
+					img.fill_rect(Rect2i(gx, gy, gw, gh), cristal)
+					img.fill_rect(Rect2i(gx, gy, gw / 2, gh / 3), brillo)
+					if con_persiana:
+						var alto_p := int(gh * 0.55)
+						img.fill_rect(Rect2i(gx, gy, gw, alto_p), persiana)
+						for ly5 in 3:
+							img.fill_rect(Rect2i(gx, gy + 8 + ly5 * 14, gw, 3), persiana_osc)
+					# Travesaño central de la carpintería.
+					img.fill_rect(Rect2i(x0 + 24 + ancho_v / 2 - 2, y0 + 20, 4, alto_v), marco)
+				# Alféizar blanco y su sombra.
+				img.fill_rect(Rect2i(x0 + 19, y0 + 20 + alto_v, ancho_v + 10, 6), marco)
+				img.fill_rect(Rect2i(x0 + 19, y0 + 26 + alto_v, ancho_v + 10, 3), sombra)
+	var tex := ImageTexture.create_from_image(img)
+	_tex_fachadas[variante] = tex
+	return tex
+
+# La planta baja, en su propia baldosa de 12 × 3 m: portal de
+# madera, dos escaparates con su banda de rótulo y una ventana
+# de vivienda. Las paredes se parten en dos: esta banda abajo
+# (conjunto 3) y la retícula de ventanas arriba.
+func _textura_planta_baja() -> Texture2D:
+	if _tex_pb != null:
+		return _tex_pb
+	var img := Image.create(512, 128, false, Image.FORMAT_RGB8)
+	img.fill(Color(0.76, 0.74, 0.70))
+	var marco := Color(0.97, 0.96, 0.94)
+	var cristal_e := Color(0.16, 0.20, 0.26)
+	var brillo_e := Color(0.30, 0.38, 0.46)
+	# La losa sobre la planta baja: banda blanca y sombra.
+	img.fill_rect(Rect2i(0, 0, 512, 9), Color(1.0, 0.99, 0.97))
+	img.fill_rect(Rect2i(0, 9, 512, 3), Color(0.58, 0.56, 0.52))
+	# Portal: marco blanco, puerta de madera y cristal arriba.
+	img.fill_rect(Rect2i(18, 34, 58, 94), marco)
+	img.fill_rect(Rect2i(23, 39, 48, 89), Color(0.30, 0.21, 0.14))
+	img.fill_rect(Rect2i(28, 44, 38, 34), cristal_e)
+	img.fill_rect(Rect2i(28, 82, 38, 3), Color(0.20, 0.14, 0.09))
+	img.fill_rect(Rect2i(28, 100, 38, 3), Color(0.20, 0.14, 0.09))
+	# Escaparate 1: banda de rótulo clara y cristal con brillo.
+	img.fill_rect(Rect2i(104, 22, 156, 106), marco)
+	img.fill_rect(Rect2i(109, 27, 146, 24), Color(0.92, 0.90, 0.86))
+	img.fill_rect(Rect2i(109, 55, 146, 68), cristal_e)
+	img.fill_rect(Rect2i(109, 55, 60, 26), brillo_e)
+	img.fill_rect(Rect2i(178, 55, 4, 68), marco)
+	# Ventana de vivienda entre escaparates.
+	img.fill_rect(Rect2i(288, 40, 52, 66), marco)
+	img.fill_rect(Rect2i(293, 45, 42, 56), cristal_e)
+	img.fill_rect(Rect2i(293, 45, 21, 20), brillo_e)
+	# Escaparate 2.
+	img.fill_rect(Rect2i(368, 22, 132, 106), marco)
+	img.fill_rect(Rect2i(373, 27, 122, 24), Color(0.92, 0.90, 0.86))
+	img.fill_rect(Rect2i(373, 55, 122, 68), cristal_e)
+	img.fill_rect(Rect2i(373, 55, 48, 26), brillo_e)
+	_tex_pb = ImageTexture.create_from_image(img)
+	return _tex_pb
 
 func _textura_digitos() -> Texture2D:
 	# Dígitos 0-9 en una retícula de 3x5, fondo color placa: cada número de
@@ -454,9 +542,10 @@ func _textura_digitos() -> Texture2D:
 
 func _construir_edificios_tile(partes: Array, vigia: Node3D = null, inmediato := true) -> Node3D:
 	var cont := Node3D.new()
-	# Tres conjuntos de malla, uno por variante de fachada
+	# Cuatro conjuntos de malla: uno por variante de fachada y el
+	# cuarto para las plantas bajas (su propia textura).
 	var conjuntos: Array = []
-	for v in 3:
+	for v in 4:
 		conjuntos.append([PackedVector3Array(), PackedVector3Array(), PackedColorArray(), PackedVector2Array()])
 	var poli_ini := _poligonos.size()
 	var tb_minx := 1e9
@@ -666,9 +755,11 @@ func _construir_edificios_tile(partes: Array, vigia: Node3D = null, inmediato :=
 		var cj: Array = conjuntos[variante]
 		var color_techo := _color_techo(centro, color)
 		# Bloque A: en el casco antiguo, los edificios rectangulares llevan
-		# tejado inclinado de teja en vez de azotea plana.
+		# tejado inclinado de teja en vez de azotea plana. Tanda 13: los
+		# bajos (2-4 plantas) lo llevan en TODA la ciudad, como en
+		# Badajoz; los altos solo en el casco, como hasta ahora.
 		var inclinado := false
-		if cat == 0 and plantas >= 2 and centro.distance_to(Vector2(-160.0, 130.0)) <= 430.0 and poly.size() == 4:
+		if cat == 0 and plantas >= 2 and poly.size() == 4 and (plantas <= 4 or centro.distance_to(Vector2(-160.0, 130.0)) <= 430.0):
 			var d01 := (poly[1] - poly[0]).normalized().dot((poly[2] - poly[1]).normalized())
 			var d12 := (poly[2] - poly[1]).normalized().dot((poly[3] - poly[2]).normalized())
 			inclinado = absf(d01) < 0.30 and absf(d12) < 0.30 and minf(maxx - minx, maxz - minz) > 4.0
@@ -688,11 +779,35 @@ func _construir_edificios_tile(partes: Array, vigia: Node3D = null, inmediato :=
 			var at := Vector3(p1.x, techo, p1.y)
 			# UV de fachada: una baldosa de textura (4×4 ventanas) cada 12 m
 			var u2 := p1.distance_to(p2) / 12.0
-			var v2 := altura / 12.0
-			_tri(cj[0], cj[1], cj[2], ab, bb, bt, false, color, cj[3],
-				PackedVector2Array([Vector2(0, 0), Vector2(u2, 0), Vector2(u2, v2)]))
-			_tri(cj[0], cj[1], cj[2], ab, bt, at, false, color, cj[3],
-				PackedVector2Array([Vector2(0, 0), Vector2(u2, v2), Vector2(0, v2)]))
+			if cat == 0 and igl == 0:
+				# Tanda 13: la pared se parte en dos — la planta
+				# baja (3 m, conjunto 3, con portales y escaparates)
+				# y la retícula de ventanas encima.
+				var cj_pb: Array = conjuntos[3]
+				var corte := base + M_POR_PLANTA
+				if altura <= M_POR_PLANTA + 0.01:
+					_tri(cj_pb[0], cj_pb[1], cj_pb[2], ab, bb, bt, false, color, cj_pb[3],
+						PackedVector2Array([Vector2(0, 0), Vector2(u2, 0), Vector2(u2, 1)]))
+					_tri(cj_pb[0], cj_pb[1], cj_pb[2], ab, bt, at, false, color, cj_pb[3],
+						PackedVector2Array([Vector2(0, 0), Vector2(u2, 1), Vector2(0, 1)]))
+				else:
+					var cb := Vector3(p2.x, corte, p2.y)
+					var ca := Vector3(p1.x, corte, p1.y)
+					var v2b := (altura - M_POR_PLANTA) / 12.0
+					_tri(cj_pb[0], cj_pb[1], cj_pb[2], ab, bb, cb, false, color, cj_pb[3],
+						PackedVector2Array([Vector2(0, 0), Vector2(u2, 0), Vector2(u2, 1)]))
+					_tri(cj_pb[0], cj_pb[1], cj_pb[2], ab, cb, ca, false, color, cj_pb[3],
+						PackedVector2Array([Vector2(0, 0), Vector2(u2, 1), Vector2(0, 1)]))
+					_tri(cj[0], cj[1], cj[2], ca, cb, bt, false, color, cj[3],
+						PackedVector2Array([Vector2(0, 0), Vector2(u2, 0), Vector2(u2, v2b)]))
+					_tri(cj[0], cj[1], cj[2], ca, bt, at, false, color, cj[3],
+						PackedVector2Array([Vector2(0, 0), Vector2(u2, v2b), Vector2(0, v2b)]))
+			else:
+				var v2 := altura / 12.0
+				_tri(cj[0], cj[1], cj[2], ab, bb, bt, false, color, cj[3],
+					PackedVector2Array([Vector2(0, 0), Vector2(u2, 0), Vector2(u2, v2)]))
+				_tri(cj[0], cj[1], cj[2], ab, bt, at, false, color, cj[3],
+					PackedVector2Array([Vector2(0, 0), Vector2(u2, v2), Vector2(0, v2)]))
 			# Bloque A: la fachada gana cuerpo — zócalo, cornisa y, según la
 			# variante, balcones de verdad o aparatos de aire acondicionado.
 			if cat == 0:
@@ -705,10 +820,12 @@ func _construir_edificios_tile(partes: Array, vigia: Node3D = null, inmediato :=
 						nrm_e = -nrm_e
 					var uv_p := PackedVector2Array([Vector2(0.02, 0.02), Vector2(0.02, 0.02), Vector2(0.02, 0.02)])
 					var col_zoc := Color(0.30, 0.27, 0.24).lerp(color, 0.25)
-					var za := Vector3(p1.x + nrm_e.x * 0.05, base + 0.55, p1.y + nrm_e.y * 0.05)
-					var zb := Vector3(p2.x + nrm_e.x * 0.05, base + 0.55, p2.y + nrm_e.y * 0.05)
-					var zt := Vector3(p2.x + nrm_e.x * 0.05, base + 1.40, p2.y + nrm_e.y * 0.05)
-					var zt2 := Vector3(p1.x + nrm_e.x * 0.05, base + 1.40, p1.y + nrm_e.y * 0.05)
+					# Zócalo bajo de verdad (Tanda 13): del suelo a
+					# 0,5 m, bajo los escaparates de la planta baja.
+					var za := Vector3(p1.x + nrm_e.x * 0.05, base + 0.02, p1.y + nrm_e.y * 0.05)
+					var zb := Vector3(p2.x + nrm_e.x * 0.05, base + 0.02, p2.y + nrm_e.y * 0.05)
+					var zt := Vector3(p2.x + nrm_e.x * 0.05, base + 0.52, p2.y + nrm_e.y * 0.05)
+					var zt2 := Vector3(p1.x + nrm_e.x * 0.05, base + 0.52, p1.y + nrm_e.y * 0.05)
 					_tri(cj[0], cj[1], cj[2], za, zb, zt, false, col_zoc, cj[3], uv_p)
 					_tri(cj[0], cj[1], cj[2], za, zt, zt2, false, col_zoc, cj[3], uv_p)
 					if not inclinado and plantas >= 2:
@@ -1005,6 +1122,9 @@ func _construir_edificios_tile(partes: Array, vigia: Node3D = null, inmediato :=
 		if (cv[0] as PackedVector3Array).is_empty():
 			continue
 		cont.add_child(_malla_de(cv[0], cv[1], cv[2], Color.WHITE, cv[3], _textura_fachada(v)))
+	var cvb: Array = conjuntos[3]
+	if not (cvb[0] as PackedVector3Array).is_empty():
+		cont.add_child(_malla_de(cvb[0], cvb[1], cvb[2], Color.WHITE, cvb[3], _textura_planta_baja()))
 	return cont
 
 func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := true) -> Node3D:
@@ -4200,6 +4320,8 @@ var _fach_tejados := 0
 var _fach_balcones := 0
 var _fach_digitos := 0
 var _tex_digitos: Texture2D = null
+var _tex_fachadas := {}
+var _tex_pb: Texture2D = null
 var _catedral_torres := 0
 var _igl_partes := 0
 var _igl_torres := 0
