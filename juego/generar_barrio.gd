@@ -99,6 +99,7 @@ var _ruta_mini_a := Vector3.INF
 var _capa_conducir: Control = null
 var _btn_gas: Button = null
 var _btn_freno: Button = null
+var _barra_pedales: PanelContainer = null
 var _btn_izq: Button = null
 var _btn_der: Button = null
 var _capa_pie: Control = null
@@ -318,13 +319,17 @@ func _escalar_interfaz_movil() -> void:
 	# ventana de diseño (1152×648): sin escalado, los textos y los
 	# botones táctiles se ven minúsculos («todo lo que está
 	# escrito se ve muy pequeño», Jon, 2026-11-24). En pantallas
-	# táctiles la interfaz se dibuja en unidades de diseño y
-	# Godot la escala a la ventana real; en escritorio (sin
-	# pantalla táctil) no cambia nada.
+	# táctiles TODO se dibuja en unidades de diseño y Godot lo
+	# escala a la ventana real (modo VIEWPORT); en escritorio
+	# (sin pantalla táctil) no cambia nada. De propina, el 3D
+	# también se renderiza a resolución de diseño en el móvil:
+	# a resolución nativa del teléfono el juego iba «a
+	# trompicones» (Jon, 2026-11-24) y así dibuja ~3 veces
+	# menos píxeles, con la interfaz igual de nítida en pantalla.
 	if not DisplayServer.is_touchscreen_available():
 		return
 	var w := get_tree().root
-	w.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	w.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
 	w.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
 	w.content_scale_size = Vector2i(1152, 648)
 
@@ -4337,9 +4342,9 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	_pill_vel = PanelContainer.new()
 	_pill_vel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	_pill_vel.offset_left = -176
-	_pill_vel.offset_top = -88
-	_pill_vel.offset_right = -14
-	_pill_vel.offset_bottom = -28
+	_pill_vel.offset_top = -180
+	_pill_vel.offset_right = -18
+	_pill_vel.offset_bottom = -126
 	var est_v := _estilo_caja(Color(0.07, 0.08, 0.11, 0.85), 20)
 	est_v.content_margin_left = 16
 	est_v.content_margin_right = 16
@@ -9713,38 +9718,44 @@ func _crear_tactil() -> void:
 	b_der.button_down.connect(func() -> void: _toque_giro = 1.0)
 	b_der.button_up.connect(func() -> void: if _toque_giro > 0.0: _toque_giro = 0.0)
 	hb.add_child(b_der)
-	var gas := Button.new()
-	_btn_gas = gas
-	gas.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	gas.offset_left = -146
-	gas.offset_right = -18
-	gas.offset_top = -152
-	gas.offset_bottom = -22
-	gas.text = "▲ GAS"
-	gas.add_theme_font_size_override("font_size", 30)
-	gas.add_theme_color_override("font_color", Color(1, 1, 1))
-	gas.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 50))
-	gas.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 50))
-	gas.add_theme_stylebox_override("focus", _estilo_caja(Color(0, 0, 0, 0), 50))
-	gas.button_down.connect(func() -> void: _toque_gas = true)
-	gas.button_up.connect(func() -> void: _toque_gas = false)
-	_capa_conducir.add_child(gas)
+	# Pedales en una sola barra, con el mismo estilo que la
+	# del volante (antes eran dos botones sueltos que se
+	# pisaban entre sí y tapaban el velocímetro — Jon).
+	var barra_ped := PanelContainer.new()
+	_barra_pedales = barra_ped
+	barra_ped.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	barra_ped.offset_left = -320
+	barra_ped.offset_top = -118
+	barra_ped.offset_right = -18
+	barra_ped.offset_bottom = -24
+	var est_bp := _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 47)
+	est_bp.content_margin_left = 10
+	est_bp.content_margin_right = 10
+	barra_ped.add_theme_stylebox_override("panel", est_bp)
+	_capa_conducir.add_child(barra_ped)
+	var hb2 := HBoxContainer.new()
+	hb2.add_theme_constant_override("separation", 6)
+	barra_ped.add_child(hb2)
 	var freno := Button.new()
 	_btn_freno = freno
-	freno.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	freno.offset_left = -282
-	freno.offset_right = -154
-	freno.offset_top = -152
-	freno.offset_bottom = -22
 	freno.text = "▼ FRENO"
-	freno.add_theme_font_size_override("font_size", 30)
+	freno.flat = true
+	freno.custom_minimum_size = Vector2(108, 0)
+	freno.add_theme_font_size_override("font_size", 26)
 	freno.add_theme_color_override("font_color", Color(1, 1, 1))
-	freno.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 50))
-	freno.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 50))
-	freno.add_theme_stylebox_override("focus", _estilo_caja(Color(0, 0, 0, 0), 50))
 	freno.button_down.connect(func() -> void: _toque_freno = true)
 	freno.button_up.connect(func() -> void: _toque_freno = false)
-	_capa_conducir.add_child(freno)
+	hb2.add_child(freno)
+	var gas := Button.new()
+	_btn_gas = gas
+	gas.text = "▲ GAS"
+	gas.flat = true
+	gas.custom_minimum_size = Vector2(150, 0)
+	gas.add_theme_font_size_override("font_size", 26)
+	gas.add_theme_color_override("font_color", Color(1, 1, 1))
+	gas.button_down.connect(func() -> void: _toque_gas = true)
+	gas.button_up.connect(func() -> void: _toque_gas = false)
+	hb2.add_child(gas)
 	# Cruceta del peatón (solo visible a pie): botones para
 	# andar y girar sin depender del joystick flotante, como
 	# en el modelo (pedido de Jon, 2026-11-24). Alimenta
@@ -17170,6 +17181,11 @@ func _capturar_si_toca() -> void:
 		_en_coche = true
 		_refrescar_tactil()
 		var coche_ok: bool = _capa_conducir.visible and not _joy_base.visible
+		# Los pedales no se pisan entre sí ni tapan el
+		# velocímetro: se comprueba por las propias anclas
+		# (el velocímetro termina por encima de donde
+		# empieza la barra, y los dos botones caben en ella).
+		var pedales_ok: bool = _barra_pedales != null and _pill_vel != null and _pill_vel.offset_bottom <= _barra_pedales.offset_top and _btn_freno.custom_minimum_size.x + _btn_gas.custom_minimum_size.x + 6.0 <= (_barra_pedales.offset_right - _barra_pedales.offset_left) - 20.0
 		var gas_ok := false
 		if _btn_gas != null:
 			_btn_gas.button_down.emit()
@@ -17200,7 +17216,7 @@ func _capturar_si_toca() -> void:
 		_en_coche = false
 		_refrescar_tactil()
 		bici_ok = bici_ok and _btn_gas.text == "▲ GAS"
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok)
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
