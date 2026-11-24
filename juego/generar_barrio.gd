@@ -7955,7 +7955,14 @@ func _datos_mapa() -> Dictionary:
 	var lineas_d: Array = []
 	for lin in _lineas_bus:
 		var pts_d: Array = []
+		# El plano pinta tambien el anillo completo de cada
+		# cabecera: la linea llega a la rotonda, la rodea
+		# entera y vuelve por donde vino.
+		for p2 in lin["giro_ini"]:
+			pts_d.append([p2.x, p2.y])
 		for p2 in lin["pts"]:
+			pts_d.append([p2.x, p2.y])
+		for p2 in lin["giro_fin"]:
 			pts_d.append([p2.x, p2.y])
 		var par_d: Array = []
 		for par in lin["paradas"]:
@@ -8537,25 +8544,48 @@ func _crear_lineas_bus() -> void:
 	# Extremos SIEMPRE en rotonda (Jon, 2026-11-24: «cada
 	# linea debe empezar y terminar en una rotonda, para que
 	# el autobus no tenga que hacer cosas raras; esto es
-	# fundamental»): la primera y la ultima ancla de cada
-	# linea son el nodo antipoda de una rotonda real del
-	# grafo (la parada final cae en el lado opuesto a la
-	# entrada, asi el autobus gira rodeandola). De paso se
-	# quitaron las ramas que el senalo (la de la L1 junto a
-	# la UNIR y la de la L5 al este, salidas y vueltas por la
-	# misma callejuela) y dos anclas que forzaban rodeos:
-	# la de la L1 sobre la avenida (1500,480 -> 1482.5,542,
-	# un nodo de la propia avenida) y la de la L4 en
-	# (1700,-580), que obligaba a ir y volver por el mismo
-	# corredor del este; la L5 del sur se alarga hasta la
-	# rotonda de Los Cascajos porque El Cubo no tiene ninguna.
+	# fundamental») y la rotonda ENTERA (Jon, al ver la
+	# primera version: «la idea de la rotonda es que la
+	# hagan entera, no solo una parte: hacen la rotonda
+	# entera y vuelven por donde han venido»): la primera y
+	# la ultima ancla de cada linea son el nodo de ENTRADA
+	# de una rotonda real del grafo, y al llegar a la
+	# cabecera el bus recorre el anillo completo (los puntos
+	# del giro van en datos/ciudad/rotondas_bus.json, en el
+	# sentido contrario a las agujas del reloj, como se
+	# circula en Espana) antes de dar la vuelta y volver por
+	# donde vino. De paso se quitaron las ramas que senalo
+	# (la de la L1 junto a la UNIR y la de la L5 al este,
+	# salidas y vueltas por la misma callejuela) y dos
+	# anclas que forzaban rodeos: la de la L1 sobre la
+	# avenida (1500,480 -> 1482.5,542, un nodo de la propia
+	# avenida) y la de la L4 en (1700,-580), que obligaba a
+	# ir y volver por el mismo corredor del este; la L5 del
+	# sur se alarga hasta la rotonda de Los Cascajos porque
+	# El Cubo no tiene ninguna. Segunda pasada del mismo
+	# dia (Jon: «la linea roja hace cosas muy raras,
+	# simplifica», y otra rama rectangular senalada en la
+	# L5): las anclas intermedias que caian en callejuelas
+	# laterales (L1 -700,-20, L2 -180,-600, L3 850,230,
+	# L5 950,150 y 850,750) se movieron a la calle principal
+	# de cada linea o se quitaron; cada ancla tiene que
+	# caer SOBRE la calle que la linea sigue, porque si
+	# cae en una rama, el bus entra y sale de la rama.
 	var defs: Array = [
-		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(1960, 695), Vector2(1482.5, 542), Vector2(700, 280), Vector2(0, 120), Vector2(-700, -20), Vector2(-1500, -300), Vector2(-1800.5, -738)]},
-		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-161.5, -1003), Vector2(-180, -600), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-480.5, 1514.5)]},
-		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-2014, 533), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(850, 230), Vector2(1650, 90), Vector2(1986.5, 448.5)]},
-		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1926, 1275.5), Vector2(-1150, 820), Vector2(-450, 520), Vector2(250, 180), Vector2(950, -220), Vector2(2202.5, -600)]},
-		{"ext": "El Cubo — Cascajos", "c": Color(0.60, 0.35, 0.90), "anclas": [Vector2(1662.5, -1604), Vector2(1236.5, -1201), Vector2(950, 150), Vector2(850, 750), Vector2(550, 1350), Vector2(419, 1747)]},
+		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(1920.5, 675.5), Vector2(1482.5, 542), Vector2(700, 280), Vector2(0, 120), Vector2(-798, -6), Vector2(-1522, -301.5), Vector2(-1786, -697.5)]},
+		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-148, -965), Vector2(-160, -582.5), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-435, 1471)]},
+		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-1983, 544), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(868, 203.5), Vector2(1650, 90), Vector2(2009, 421.5)]},
+		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1880.5, 1219.5), Vector2(-1150, 820), Vector2(-450, 520), Vector2(250, 180), Vector2(950, -220), Vector2(2146, -565)]},
+		{"ext": "El Cubo — Cascajos", "c": Color(0.60, 0.35, 0.90), "anclas": [Vector2(1651, -1566.5), Vector2(1236.5, -1201), Vector2(885, 180), Vector2(690, 753), Vector2(550, 1350), Vector2(446, 1724)]},
 	]
+	# Los giros completos de las rotondas de cabecera,
+	# horneados desde OSM (anillo ordenado, cerrado sobre
+	# el nodo de entrada de cada extremo).
+	var giros_d: Dictionary = {}
+	if FileAccess.file_exists("res://datos/ciudad/rotondas_bus.json"):
+		var parsed_g = JSON.parse_string(FileAccess.get_file_as_string("res://datos/ciudad/rotondas_bus.json"))
+		if parsed_g is Dictionary:
+			giros_d = parsed_g
 	for d in defs:
 		var pts: Array = []
 		var anclas: Array = d["anclas"]
@@ -8590,7 +8620,14 @@ func _crear_lineas_bus() -> void:
 		for c in cands:
 			if paradas.is_empty() or float(c["s"]) - float(paradas[paradas.size() - 1]["s"]) >= 130.0:
 				paradas.append(c)
-		_lineas_bus.append({"ext": String(d["ext"]), "c": d["c"], "pts": pts, "s": ss, "longitud": longitud, "paradas": paradas})
+		var giro_ini: Array = []
+		var giro_fin: Array = []
+		var gd: Dictionary = giros_d.get(str(_lineas_bus.size()), {})
+		for par_g in gd.get("ini", []):
+			giro_ini.append(Vector2(float(par_g[0]), float(par_g[1])))
+		for par_g in gd.get("fin", []):
+			giro_fin.append(Vector2(float(par_g[0]), float(par_g[1])))
+		_lineas_bus.append({"ext": String(d["ext"]), "c": d["c"], "pts": pts, "s": ss, "longitud": longitud, "paradas": paradas, "giro_ini": giro_ini, "giro_fin": giro_fin})
 		print("LINEA_OK ", _lineas_bus.size(), " pts=", pts.size(), " paradas=", paradas.size(), " long=", int(longitud))
 
 func _crear_buses_urbanos() -> void:
@@ -8614,7 +8651,7 @@ func _crear_buses_urbanos() -> void:
 			bus.position = Vector3(p0.x, _altura(p0.x, p0.y), p0.y)
 			add_child(bus)
 			var idx := clampi(ip + dir, 0, pts.size() - 1)
-			_buses_urbanos.append({"nodo3d": bus, "linea": li, "idx": idx, "dir": dir, "s": float(ss[ip]), "vel": 6.0 + _rng.randf() * 1.5, "vel_act": 0.0, "parada_t": 0.0, "espera": _rng.randf() * 20.0})
+			_buses_urbanos.append({"nodo3d": bus, "linea": li, "idx": idx, "dir": dir, "s": float(ss[ip]), "vel": 6.0 + _rng.randf() * 1.5, "vel_act": 0.0, "parada_t": 0.0, "espera": _rng.randf() * 20.0, "giro": [], "giro_i": 0, "giro_fin_dir": 1})
 	print("BUSES_OK n=", _buses_urbanos.size())
 
 func _mover_buses(delta: float) -> void:
@@ -8635,15 +8672,61 @@ func _mover_buses(delta: float) -> void:
 			bu["dir"] = sentido
 			idx = clampi(idx, 0, pts.size() - 1)
 			bu["idx"] = idx
+		# Giro de cabecera en curso: el bus esta recorriendo
+		# la rotonda ENTERA (mismo gobierno que en la linea,
+		# con su desplazamiento a la derecha, pero sin
+		# paradas: la pausa de cabecera viene al cerrar el
+		# anillo, en el punto de entrada).
+		if not (bu["giro"] as Array).is_empty():
+			var gpts: Array = bu["giro"]
+			var gi: int = int(bu["giro_i"])
+			var gp: Vector2 = gpts[gi]
+			var hg := Vector2(gp.x - bus.position.x, gp.y - bus.position.z)
+			if hg.length() < 4.0:
+				gi += 1
+				bu["giro_i"] = gi
+				if gi >= gpts.size():
+					bu["giro"] = []
+					bu["dir"] = int(bu["giro_fin_dir"])
+					bu["parada_t"] = 6.0
+				continue
+			var dirg := hg / hg.length()
+			var derg := Vector2(-dirg.y, dirg.x)
+			var objg := gp + derg * 1.7
+			var hog := Vector2(objg.x - bus.position.x, objg.y - bus.position.z)
+			if hog.length() > 0.1:
+				dirg = hog / hog.length()
+			var velg := float(bu["vel"])
+			var to_jg := Vector2(_jugador.position.x - bus.position.x, _jugador.position.z - bus.position.z)
+			if to_jg.length() < 9.0 and to_jg.length() > 0.01 and dirg.dot(to_jg / to_jg.length()) > 0.5:
+				velg = 0.0
+			var vag := float(bu["vel_act"])
+			vag = move_toward(vag, velg, (9.0 if velg < vag else 4.0) * delta)
+			bu["vel_act"] = vag
+			bus.position.x += dirg.x * vag * delta
+			bus.position.z += dirg.y * vag * delta
+			bus.position.y = _altura(bus.position.x, bus.position.z)
+			bus.rotation.y = atan2(dirg.x, dirg.y)
+			continue
 		var dp: Vector2 = pts[idx]
 		var hacia := Vector2(dp.x - bus.position.x, dp.y - bus.position.z)
 		if hacia.length() < 4.0:
 			bu["s"] = float(ss[idx])
 			var sig := idx + sentido
 			if sig < 0 or sig >= pts.size():
-				# Cabecera de línea: pausa y media vuelta.
-				bu["dir"] = -sentido
-				bu["parada_t"] = 6.0
+				# Cabecera de linea: si la cabecera es una
+				# rotonda, el bus la recorre ENTERA antes de
+				# volver por donde vino (la media vuelta y la
+				# pausa se hacen al cerrar el anillo); si no
+				# hay giro definido, pausa y media vuelta.
+				var gl: Array = lin["giro_ini"] if sig < 0 else lin["giro_fin"]
+				if not gl.is_empty():
+					bu["giro"] = gl
+					bu["giro_i"] = 0
+					bu["giro_fin_dir"] = -sentido
+				else:
+					bu["dir"] = -sentido
+					bu["parada_t"] = 6.0
 				sig = idx
 			bu["idx"] = sig
 			continue
@@ -8897,6 +8980,66 @@ func _probar_lineas() -> void:
 	_dinero = 0
 	_subir_bus_pasajero(_bus_linea_cercano())
 	pasa = pasa and _bus_pasajero.is_empty() and _aviso.begins_with("No te llega")
+	# Giro ENTERO de rotonda en cabecera (Jon, 2026-11-24):
+	# cada linea trae los dos anillos cerrados sobre su
+	# nodo de entrada y la direccion gira una vuelta
+	# completa al recorrerlos (la suma de giros ~ 2*PI;
+	# un arco parcial daria mucho menos).
+	for lin in _lineas_bus:
+		var gi: Array = lin["giro_ini"]
+		var gf: Array = lin["giro_fin"]
+		pasa = pasa and gi.size() >= 12 and gf.size() >= 12
+		pasa = pasa and (gi[0] as Vector2).distance_to(gi[gi.size() - 1]) < 0.6
+		pasa = pasa and (gf[0] as Vector2).distance_to(gf[gf.size() - 1]) < 0.6
+		for anillo in [gi, gf]:
+			var suma := 0.0
+			var n_a: int = anillo.size()
+			for k in range(n_a):
+				var p_a: Vector2 = anillo[k]
+				var p_b: Vector2 = anillo[(k + 1) % n_a]
+				var p_c: Vector2 = anillo[(k + 2) % n_a]
+				var a1 := atan2(p_b.y - p_a.y, p_b.x - p_a.x)
+				var a2 := atan2(p_c.y - p_b.y, p_c.x - p_b.x)
+				var da := a2 - a1
+				while da > PI:
+					da -= TAU
+				while da < -PI:
+					da += TAU
+				suma += da
+			pasa = pasa and absf(suma) > 5.5
+	# Y un bus puesto en la cabecera de la L1 la rodea de
+	# verdad: entra en giro, recorre casi todo el perimetro
+	# del anillo (140 m; un arco parcial daria ~70) y sale
+	# con el sentido cambiado y su pausa de cabecera.
+	var lin0: Dictionary = _lineas_bus[0]
+	var bu2: Dictionary = _buses_urbanos[1]
+	var bus2: Node3D = bu2["nodo3d"]
+	var pts0: Array = lin0["pts"]
+	bu2["linea"] = 0
+	bu2["idx"] = pts0.size() - 1
+	bu2["dir"] = 1
+	bu2["parada_t"] = 0.0
+	bu2["espera"] = 99999.0
+	bu2["giro"] = []
+	bu2["vel_act"] = 0.0
+	var entrada: Vector2 = pts0[pts0.size() - 1]
+	bus2.position = Vector3(entrada.x, _altura(entrada.x, entrada.y), entrada.y)
+	_jugador.position = Vector3(-400.0, _altura(-400.0, 0.0) + 0.95, 0.0)
+	var vio_giro := false
+	var recorrido_giro := 0.0
+	var pos_ant := bus2.position
+	for i in 600:
+		_mover_buses(0.25)
+		recorrido_giro += Vector2(bus2.position.x - pos_ant.x, bus2.position.z - pos_ant.z).length()
+		pos_ant = bus2.position
+		if not (bu2["giro"] as Array).is_empty():
+			vio_giro = true
+		if vio_giro and (bu2["giro"] as Array).is_empty() and int(bu2["dir"]) == -1:
+			break
+	pasa = pasa and vio_giro
+	pasa = pasa and int(bu2["dir"]) == -1
+	pasa = pasa and recorrido_giro > 110.0
+	pasa = pasa and Vector2(bus2.position.x - entrada.x, bus2.position.z - entrada.y).length() < 12.0
 	var datos := _datos_mapa()
 	pasa = pasa and (datos.get("lineas", []) as Array).size() == 5
 	print("LINEAS_OK pasa=", pasa, " lineas=", _lineas_bus.size())
@@ -14498,6 +14641,30 @@ func _capturar_si_toca() -> void:
 		var pos_pg: Vector3 = (_piraguas[0]["grupo"] as Node3D).position
 		_cam.look_at_from_position(pos_pg + Vector3(6.5, 1.9, 5.0), pos_pg + Vector3(0, 0.5, 0), Vector3.UP)
 		nombre = "piraguas.png"
+	elif args.has("capturar_giro"):
+		# Un bus de la L4 rodeando ENTERA la rotonda de su
+		# cabecera este (Madre de Dios), a mitad del anillo.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(2174, -581)) + Vector2i(dx, dy))
+		_jugador.position = Vector3(1900.0, _altura(1900.0, -300.0) + 0.95, -300.0)
+		var lin_g: Dictionary = _lineas_bus[3]
+		var bu_g: Dictionary = _buses_urbanos[0]
+		var bus_g: Node3D = bu_g["nodo3d"]
+		var anillo_g: Array = lin_g["giro_fin"]
+		bu_g["linea"] = 3
+		bu_g["parada_t"] = 0.0
+		bu_g["espera"] = 99999.0
+		bu_g["giro"] = anillo_g
+		bu_g["giro_i"] = 6
+		bu_g["giro_fin_dir"] = -1
+		bu_g["vel_act"] = float(bu_g["vel"])
+		var p_ini: Vector2 = anillo_g[6]
+		bus_g.position = Vector3(p_ini.x, _altura(p_ini.x, p_ini.y), p_ini.y)
+		for i in 12:
+			_mover_buses(0.12)
+		_cam.look_at_from_position(Vector3(2174 + 55, _altura(2174, -581) + 42, -581 + 75), Vector3(2174, _altura(2174, -581) + 1, -581), Vector3.UP)
+		nombre = "giro.png"
 	elif args.has("capturar_puerta"):
 		# La Puerta del Ebro desde la ribera
 		for dx in [-1, 0, 1]:
@@ -15093,6 +15260,13 @@ func _capturar_si_toca() -> void:
 		_mapa.set("_centro", Vector2(1000, -300))
 		_mapa.queue_redraw()
 		nombre = "mapa_l5.png"
+	elif args.has("capturar_mapa_rotonda"):
+		_aceptar_trabajo(0)
+		_abrir_mapa()
+		_mapa.set("_zoom", 4.0)
+		_mapa.set("_centro", Vector2(2174, -581))
+		_mapa.queue_redraw()
+		nombre = "mapa_rotonda.png"
 	elif args.has("capturar_pilar"):
 		_aceptar_trabajo(0)
 		var pp := _jugador.position
