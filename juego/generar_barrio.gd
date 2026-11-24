@@ -1401,6 +1401,16 @@ func _ruta_calle(desde: Vector3, hasta: Vector3) -> Array:
 	# a un portal) metian en las lineas excursiones en
 	# escalera rodeando edificios y ganchos en las cabeceras
 	# (visto por Jon en las lineas roja, verde y azul).
+	# El coste lleva una penalizacion por giro (3 m por
+	# radian): sin ella, en las avenidas de doble calzada el
+	# camino mas corto saltaba de una calzada a la otra a
+	# mitad de manzana y la linea salia con escalones (Jon:
+	# «que la linea roja sea una linea recta», y lo mismo
+	# la verde). Con la penalizacion el autobus se queda en
+	# una sola calzada y solo gira donde la calle gira de
+	# verdad. La busqueda es sobre aristas dirigidas (el
+	# estado es el par nodo anterior/nodo) porque el giro
+	# depende de como se llega a cada nodo.
 	var salida: Array = []
 	if _nodos.is_empty():
 		salida.append(hasta)
@@ -1410,32 +1420,48 @@ func _ruta_calle(desde: Vector3, hasta: Vector3) -> Array:
 	if s == t:
 		salida.append(Vector3(_nodos[t].x, 0, _nodos[t].y))
 		return salida
-	var dist := {s: 0.0}
+	var dist := {}
 	var prev := {}
 	var abierta: Array = []
-	_heap_push(abierta, [_nodos[s].distance_to(_nodos[t]), s])
+	dist[Vector2i(-1, s)] = 0.0
+	_heap_push(abierta, [_nodos[s].distance_to(_nodos[t]), 0.0, -1, s])
 	var cerrados := {}
+	var llegada := Vector2i(-2, -2)
 	while not abierta.is_empty():
 		var actual: Array = _heap_pop(abierta)
-		var u: int = actual[1]
-		if cerrados.has(u):
+		var g: float = actual[1]
+		var p: int = actual[2]
+		var u: int = actual[3]
+		var estado := Vector2i(p, u)
+		if cerrados.has(estado):
 			continue
-		cerrados[u] = true
+		cerrados[estado] = true
 		if u == t:
+			llegada = estado
 			break
 		for par in _ady.get(u, []):
 			var v: int = par[0]
-			var nd: float = dist.get(u, 1e18) + par[1]
-			if nd < dist.get(v, 1e18):
-				dist[v] = nd
-				prev[v] = u
-				_heap_push(abierta, [nd + _nodos[v].distance_to(_nodos[t]), v])
-	if not prev.has(t):
+			var giro := 0.0
+			if p >= 0:
+				var a1 := atan2(_nodos[u].x - _nodos[p].x, _nodos[u].y - _nodos[p].y)
+				var a2 := atan2(_nodos[v].x - _nodos[u].x, _nodos[v].y - _nodos[u].y)
+				giro = absf(wrapf(a2 - a1, -PI, PI))
+			var nd: float = g + float(par[1]) + 3.0 * giro
+			var estado_v := Vector2i(u, v)
+			if nd < float(dist.get(estado_v, 1e18)):
+				dist[estado_v] = nd
+				prev[estado_v] = estado
+				_heap_push(abierta, [nd + _nodos[v].distance_to(_nodos[t]), nd, u, v])
+	if llegada.x == -2:
 		salida.append(Vector3(_nodos[t].x, 0, _nodos[t].y))
 		return salida
-	var cadena: Array = [t]
-	while cadena[0] != s:
-		cadena.push_front(prev[cadena[0]])
+	var cadena: Array = []
+	var est := llegada
+	while true:
+		cadena.push_front(est.y)
+		if est.x < 0:
+			break
+		est = prev[est]
 	for idn in cadena:
 		var nv: Vector2 = _nodos[idn]
 		salida.append(Vector3(nv.x, 0, nv.y))
@@ -1784,6 +1810,77 @@ func _hito_franco(verts: PackedVector3Array, normals: PackedVector3Array, cols: 
 	_caja_en(verts, normals, cols, Vector3(fx + fn.x * 0.16, py + 5.05, fz + fn.y * 0.16), Vector3(19.0, 1.6, 0.18), vino, rot_f)
 	_caja_en(verts, normals, cols, Vector3(fx + fn.x * 0.16, py + 5.90, fz + fn.y * 0.16), Vector3(19.0, 0.09, 0.20), Color(0.85, 0.88, 0.90), rot_f)
 	_rotulos_tile_actual.append({"n": "Bodegas Franco-Españolas", "h": fn, "w": 18.6, "g": 4.2, "p": Vector3(fx + fn.x * 0.35, py + 5.05, fz + fn.y * 0.35)})
+
+func _datos_enamorados() -> Dictionary:
+	# La planta del parque, horneada desde el polígono OSM:
+	# celdas de césped (fuera de calles y edificios), árboles
+	# y bancos junto a los caminos de paseo.
+	if not _enamorados_datos.is_empty():
+		return _enamorados_datos
+	var ruta := "res://datos/ciudad/enamorados.json"
+	if FileAccess.file_exists(ruta):
+		var d = JSON.parse_string(FileAccess.get_file_as_string(ruta))
+		if d != null and d.has("celdas"):
+			_enamorados_datos = d
+	return _enamorados_datos
+
+func _hito_enamorados(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, gx: float, gz: float) -> void:
+	# El Parque de los Enamorados (pedido de Jon: «está
+	# completamente vacío, trabájalo más, más zona verde»):
+	# el césped sobre el polígono real del parque y los
+	# bancos junto a los caminos. La gente va en
+	# _enamorados_gente().
+	var datos := _datos_enamorados()
+	if datos.is_empty():
+		return
+	var verde1 := Color(0.30, 0.50, 0.22)
+	var verde2 := Color(0.35, 0.55, 0.25)
+	for celda in datos["celdas"]:
+		var cx := float(celda[0])
+		var cz := float(celda[1])
+		var hh: float = fposmod(sin(cx * 12.9898 + cz * 78.233) * 43758.5453, 1.0)
+		_caja_en(verts, normals, cols, Vector3(cx, _altura(cx, cz) + 0.04, cz), Vector3(12.6, 0.09, 12.6), verde1 if hh < 0.5 else verde2, 0.0)
+	for banco in datos.get("bancos", []):
+		_banco_paseo(verts, normals, cols, Vector2(float(banco[0]), float(banco[1])), float(banco[2]))
+
+func _enamorados_gente() -> void:
+	# La vida del parque (pedido de Jon): una pareja sentada
+	# en un banco y otra andando de la mano por el parque.
+	if _enamorados_hecho:
+		return
+	var datos := _datos_enamorados()
+	if datos.is_empty():
+		return
+	_enamorados_hecho = true
+	var arboles_m := _malla_arboles(datos.get("arboles", []))
+	if arboles_m != null:
+		add_child(arboles_m)
+	var bancos: Array = datos.get("bancos", [])
+	if bancos.size() > 3:
+		var banco: Array = bancos[3]
+		var bx := float(banco[0])
+		var bz := float(banco[1])
+		var rot_b := float(banco[2])
+		var lat_b := Vector3(cos(rot_b), 0, -sin(rot_b))
+		var cen_b := Vector3(bx, _altura(bx, bz), bz)
+		var camisas_s: Array = [Color(0.80, 0.30, 0.35), Color(0.25, 0.40, 0.75)]
+		var pelos_s: Array = [Color(0.16, 0.11, 0.07), Color(0.45, 0.30, 0.16)]
+		for k in 2:
+			var per_s := _persona_en(cen_b, Vector2.ZERO, camisas_s[k], pelos_s[k])
+			var raiz_s: Node3D = per_s["raiz"]
+			var sitio_s := cen_b + lat_b * (-0.45 if k == 0 else 0.45)
+			raiz_s.position = Vector3(sitio_s.x, _altura(sitio_s.x, sitio_s.z) + 0.52, sitio_s.z)
+			raiz_s.rotation.y = rot_b
+			(per_s["pi"] as Node3D).rotation.x = -1.25
+			(per_s["pd"] as Node3D).rotation.x = -1.25
+			_estaticos.append({"d": per_s, "raiz": raiz_s, "tipo": "sentado", "fase": _rng.randf() * 6.0})
+	# La pareja que pasea de la mano: dos figuras que dan
+	# vueltas al parque por una elipse; se mueven en
+	# _mover_peatones, en su propio bloque.
+	var per_a := _persona_en(Vector3(-2219, 0, 103), Vector2.ZERO, Color(0.85, 0.55, 0.20), Color(0.16, 0.11, 0.07))
+	var per_b := _persona_en(Vector3(-2219, 0, 104), Vector2.ZERO, Color(0.55, 0.30, 0.60), Color(0.70, 0.60, 0.35))
+	_pareja_enamorados = {"a": per_a, "b": per_b, "tita": 0.0, "fase": 0.0}
+	print("ENAMORADOS_OK bancos=", bancos.size(), " arboles=", (datos.get("arboles", []) as Array).size())
 
 func _hito_puerta(verts: PackedVector3Array, normals: PackedVector3Array, cols: PackedColorArray, gx: float, gz: float) -> void:
 	# La Puerta del Ebro: el gran marco de acero cortén de la ribera.
@@ -2537,8 +2634,23 @@ func _skate_gente() -> void:
 		var tabla := Node3D.new()
 		tabla.position = Vector3(0, -0.93, 0.02)
 		tabla.add_child(_pieza(Vector3(0.24, 0.04, 0.84), Vector3.ZERO, Color(0.16, 0.16, 0.18)))
-		tabla.add_child(_pieza(Vector3(0.09, 0.07, 0.09), Vector3(0, -0.05, 0.26), Color(0.85, 0.85, 0.85)))
-		tabla.add_child(_pieza(Vector3(0.09, 0.07, 0.09), Vector3(0, -0.05, -0.26), Color(0.85, 0.85, 0.85)))
+		# Ruedas redondas también en el monopatín (pedido de
+		# Jon: nada de ruedas cuadradas en ningún vehículo).
+		var mat_rs := StandardMaterial3D.new()
+		mat_rs.albedo_color = Color(0.85, 0.85, 0.85)
+		for wz in [0.26, -0.26]:
+			for wx in [-0.085, 0.085]:
+				var cil_s := CylinderMesh.new()
+				cil_s.top_radius = 0.045
+				cil_s.bottom_radius = 0.045
+				cil_s.height = 0.035
+				cil_s.radial_segments = 12
+				cil_s.material = mat_rs
+				var rueda_s := MeshInstance3D.new()
+				rueda_s.mesh = cil_s
+				rueda_s.rotation_degrees = Vector3(0, 0, 90)
+				rueda_s.position = Vector3(wx, -0.055, wz)
+				tabla.add_child(rueda_s)
 		raiz.add_child(tabla)
 		_skaters.append({"d": per, "raiz": raiz, "tabla": tabla, "modo": int(d[2]), "fase": _rng.randf() * 6.0, "ys": ys})
 
@@ -2769,15 +2881,22 @@ func _coche_en(verts: PackedVector3Array, normals: PackedVector3Array, cols: Pac
 	var partes := [
 		[Vector3(0, 0.28 + cuerpo.y / 2.0, 0), cuerpo, color],
 		[Vector3(0, 0.28 + cuerpo.y + cabina.y / 2.0 - 0.03, cab_z), cabina, vidrio],
-		[Vector3(-(cuerpo.x / 2.0 - 0.05), 0.35, -(cuerpo.z / 2.0 - 0.65)), Vector3(0.25, 0.7, 0.7), Color(0.05, 0.05, 0.05)],
-		[Vector3(cuerpo.x / 2.0 - 0.05, 0.35, -(cuerpo.z / 2.0 - 0.65)), Vector3(0.25, 0.7, 0.7), Color(0.05, 0.05, 0.05)],
-		[Vector3(-(cuerpo.x / 2.0 - 0.05), 0.35, cuerpo.z / 2.0 - 0.65), Vector3(0.25, 0.7, 0.7), Color(0.05, 0.05, 0.05)],
-		[Vector3(cuerpo.x / 2.0 - 0.05, 0.35, cuerpo.z / 2.0 - 0.65), Vector3(0.25, 0.7, 0.7), Color(0.05, 0.05, 0.05)],
 	]
 	for parte in partes:
 		var off: Vector3 = parte[0]
 		var centro := origen + Vector3(off.x * cr + off.z * sr, off.y, -off.x * sr + off.z * cr)
 		_caja_en(verts, normals, cols, centro, parte[1], parte[2], ang)
+	# Ruedas REDONDAS (pedido de Jon: «todas las ruedas de
+	# todos los vehículos sean circulares, nunca cuadradas»):
+	# cilindros octogonales con su buje claro, como los del
+	# autobús, en vez de las cajas que llevaban los coches
+	# aparcados y los del tráfico (ambos salen de aquí).
+	var eje_r := Vector3(cr, 0, -sr)
+	for ox in [-(cuerpo.x / 2.0 - 0.05), cuerpo.x / 2.0 - 0.05]:
+		for oz in [-(cuerpo.z / 2.0 - 0.65), cuerpo.z / 2.0 - 0.65]:
+			var cw := origen + Vector3(ox * cr + oz * sr, 0.35, -ox * sr + oz * cr)
+			_columna_ruina(verts, normals, cols, cw - eje_r * 0.13, eje_r, 0.26, 0.35, Color(0.05, 0.05, 0.05))
+			_columna_ruina(verts, normals, cols, cw - eje_r * 0.145, eje_r, 0.29, 0.19, Color(0.55, 0.56, 0.58))
 
 func _aparcados_tile(cont: Node3D, calles: Array, puertas: Array = []) -> void:
 	# Coches aparcados FUNDIDOS en una sola malla por baldosa. Antes cada
@@ -2863,6 +2982,7 @@ const HITOS: Array = [
 	{"n": "museo", "x": -541.0, "z": 137.0},
 	{"n": "casa", "x": -234.0, "z": -446.0},
 	{"n": "franco", "x": -390.0, "z": -582.0},
+	{"n": "enamorados", "x": -2311.3, "z": 100.0},
 	{"n": "puerta", "x": 305.0, "z": -274.0},
 	{"n": "danza", "x": -120.0, "z": -430.0},
 	{"n": "riojanos", "x": -824.0, "z": 253.0},
@@ -2993,6 +3113,11 @@ func _hitos_tile(cont: Node3D, t: Vector2i) -> void:
 				_hito_franco(verts, normals, cols, hx, hz)
 				hecho = true
 				print("HITO_OK franco")
+			"enamorados":
+				_hito_enamorados(verts, normals, cols, hx, hz)
+				_enamorados_gente()
+				hecho = true
+				print("HITO_OK enamorados")
 			"gaunas":
 				_marca(verts, normals, cols, hx, hz, Vector2(-1, 0), "Estadio Las Gaunas", 6.0, 26.0, 12.8)
 				_marca(verts, normals, cols, -864, 1634, Vector2(0, 1), "Estadio Las Gaunas", 6.0, 26.0, 12.8)
@@ -7015,12 +7140,16 @@ func _cargar_placas() -> void:
 		return
 	# Sin duplicadas: las de los ejes se repiten dentro de la lista
 	# de la ciudad; misma calle a menos de 8 m es la misma placa.
+	# Tambien es la misma calle si solo cambia el tipo de via
+	# («Avenida Juan XXIII» y «Calle Juan XXIII» conviven en los
+	# datos y salian las dos en la misma esquina).
 	var rej := {}
 	var aceptadas: Array = []
 	for pl in crudas:
 		var x := float(pl["x"])
 		var z := float(pl["z"])
 		var nom := String(pl["n"])
+		var base := _nombre_calle_base(nom)
 		var dup := false
 		for cx in range(int(floor((x - 8.0) / 10.0)), int(floor((x + 8.0) / 10.0)) + 1):
 			for cz in range(int(floor((z - 8.0) / 10.0)), int(floor((z + 8.0) / 10.0)) + 1):
@@ -7029,7 +7158,7 @@ func _cargar_placas() -> void:
 					continue
 				for ia in rej[clave]:
 					var pa: Dictionary = aceptadas[ia]
-					if String(pa["n"]) == nom and Vector2(x - float(pa["x"]), z - float(pa["z"])).length_squared() < 64.0:
+					if (String(pa["n"]) == nom or _nombre_calle_base(String(pa["n"])) == base) and Vector2(x - float(pa["x"]), z - float(pa["z"])).length_squared() < 64.0:
 						dup = true
 		if dup:
 			continue
@@ -7042,17 +7171,53 @@ func _cargar_placas() -> void:
 	var normals := PackedVector3Array()
 	var cols := PackedColorArray()
 	var col_placa := Color(0.13, 0.16, 0.28)
-	for pl in aceptadas:
+	for ip in aceptadas.size():
+		var pl: Dictionary = aceptadas[ip]
 		var x := float(pl["x"])
 		var z := float(pl["z"])
 		var h := Vector2(float(pl["hx"]), float(pl["hz"]))
-		var y := _altura_terreno(x, z) + 2.7
-		var rot := atan2(h.x, h.y)
+		# Placas superpuestas (visto por Jon: dos nombres en el
+		# mismo punto y con el mismo rumbo se leian mezclados):
+		# en los datos, cada cruce trae una placa por calle pero
+		# todas en el mismo punto y rumbo. Las que coincidan con
+		# una ya puesta se apilan en vertical sobre el mismo
+		# poste, como en las esquinas de verdad.
+		var nivel := 0
+		var rumbo := atan2(h.x, h.y)
+		for cx in range(int(floor((x - 1.0) / 10.0)), int(floor((x + 1.0) / 10.0)) + 1):
+			for cz in range(int(floor((z - 1.0) / 10.0)), int(floor((z + 1.0) / 10.0)) + 1):
+				var clave_n := str(cx) + "," + str(cz)
+				if not rej.has(clave_n):
+					continue
+				for ia in rej[clave_n]:
+					if ia >= ip:
+						continue
+					var pa: Dictionary = aceptadas[ia]
+					if Vector2(x - float(pa["x"]), z - float(pa["z"])).length() < 1.0 and absf(wrapf(rumbo - atan2(float(pa["hx"]), float(pa["hz"])), -PI, PI)) < 0.3:
+						nivel += 1
+		var y := _altura_terreno(x, z) + 2.7 + float(nivel) * 0.78
+		var rot := rumbo
 		_caja_en(verts, normals, cols, Vector3(x - h.x * 0.06, y, z - h.y * 0.06), Vector3(0.08, 0.62, 3.0), col_placa, rot)
 		_placas_datos.append({"n": String(pl["n"]), "h": h, "w": 3.2, "g": 0.55, "p": Vector3(x + h.x * 0.12, y, z + h.y * 0.12)})
 	if not verts.is_empty():
 		add_child(_malla_de(verts, normals, cols, Color.WHITE))
 	print("PLACAS_OK n=", _placas_datos.size())
+
+func _nombre_calle_base(nom: String) -> String:
+	# El nombre de la calle sin el tipo de via inicial, para
+	# reconocer la misma calle venga como Avenida o como Calle.
+	var s := nom.to_lower()
+	for par in [["á", "a"], ["é", "e"], ["í", "i"], ["ó", "o"], ["ú", "u"]]:
+		s = s.replace(par[0], par[1])
+	for tipo in ["avenida", "calle", "plaza", "paseo", "travesia", "camino", "ronda", "glorieta", "parque", "acceso"]:
+		if s.begins_with(tipo + " "):
+			s = s.substr(tipo.length() + 1)
+			break
+	for art in ["de la ", "de los ", "de las ", "del ", "de ", "la ", "los ", "las ", "el "]:
+		if s.begins_with(art):
+			s = s.substr(art.length())
+			break
+	return s
 
 func _crear_bloque7() -> void:
 	# Bloque 7 (transversales): marquesinas en las paradas reales
@@ -8571,11 +8736,19 @@ func _crear_lineas_bus() -> void:
 	# de cada linea o se quitaron; cada ancla tiene que
 	# caer SOBRE la calle que la linea sigue, porque si
 	# cae en una rama, el bus entra y sale de la rama.
+	# Tercera pasada (Jon, sobre la captura del Espolon:
+	# «simplifica esta linea, que vaya por Vara de Rey
+	# hasta la rotonda del Labrador y luego Gran Via»): la
+	# L4 cruzaba el centro en escalera entre (250,180) y
+	# (-450,520); ahora entra por Vara de Rey (anclas sobre
+	# la propia avenida: -101,199.5 y -161,406), pasa la
+	# rotonda del Labrador y sale por Gran Via (-365,422
+	# y -813,261) hacia Yagüe.
 	var defs: Array = [
 		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(1920.5, 675.5), Vector2(1482.5, 542), Vector2(700, 280), Vector2(0, 120), Vector2(-798, -6), Vector2(-1522, -301.5), Vector2(-1786, -697.5)]},
 		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-148, -965), Vector2(-160, -582.5), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-435, 1471)]},
 		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-1983, 544), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(868, 203.5), Vector2(1650, 90), Vector2(2009, 421.5)]},
-		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1880.5, 1219.5), Vector2(-1150, 820), Vector2(-450, 520), Vector2(250, 180), Vector2(950, -220), Vector2(2146, -565)]},
+		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1880.5, 1219.5), Vector2(-1150, 820), Vector2(-813, 261), Vector2(-365, 422), Vector2(-161, 406), Vector2(-101, 199.5), Vector2(250, 180), Vector2(950, -220), Vector2(2146, -565)]},
 		{"ext": "El Cubo — Cascajos", "c": Color(0.60, 0.35, 0.90), "anclas": [Vector2(1651, -1566.5), Vector2(1236.5, -1201), Vector2(885, 180), Vector2(690, 753), Vector2(550, 1350), Vector2(446, 1724)]},
 	]
 	# Los giros completos de las rotondas de cabecera,
@@ -9959,6 +10132,9 @@ func _agua_profunda(p: Vector2) -> bool:
 	return _profundidad(p) > 0.24
 
 var _piraguas: Array = []
+var _enamorados_datos: Dictionary = {}
+var _enamorados_hecho := false
+var _pareja_enamorados: Dictionary = {}
 var _piragua_ruta: Array = []
 var _piragua_lens: Array = []
 var _piragua_total := 0.0
@@ -11621,6 +11797,44 @@ func _probar_piraguas() -> void:
 	if ok:
 		print("PIRAGUAS_OK circuito=", int(_piragua_total))
 
+func _probar_enamorados() -> void:
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			_construir_tile(_tile_de(Vector2(-2311, 100)) + Vector2i(dx, dy))
+	var ok := true
+	var datos := _datos_enamorados()
+	if datos.is_empty() or (datos["celdas"] as Array).size() < 500:
+		ok = false
+		print("ENAMORADOS_FALLO sin celdas de cesped")
+	if not _enamorados_hecho or _pareja_enamorados.is_empty():
+		ok = false
+		print("ENAMORADOS_FALLO la gente del parque no se creo")
+	var sentados := 0
+	var bancos: Array = datos.get("bancos", [])
+	if bancos.size() > 3:
+		var b3: Array = bancos[3]
+		for e in _estaticos:
+			if String(e["tipo"]) == "sentado" and Vector2((e["raiz"] as Node3D).position.x, (e["raiz"] as Node3D).position.z).distance_to(Vector2(float(b3[0]), float(b3[1]))) < 3.0:
+				sentados += 1
+	if sentados != 2:
+		ok = false
+		print("ENAMORADOS_FALLO sentados en el banco=", sentados)
+	_jugador.position = Vector3(-2311, _altura(-2311, 103) + 0.95, 103)
+	var antes_a: Vector3 = (_pareja_enamorados["a"]["raiz"] as Node3D).position
+	var antes_b: Vector3 = (_pareja_enamorados["b"]["raiz"] as Node3D).position
+	for i in 40:
+		_mover_peatones(0.1)
+		_tiempo += 0.1
+	var ahora_a: Vector3 = (_pareja_enamorados["a"]["raiz"] as Node3D).position
+	var ahora_b: Vector3 = (_pareja_enamorados["b"]["raiz"] as Node3D).position
+	if ahora_a.distance_to(antes_a) < 0.5 or ahora_b.distance_to(antes_b) < 0.5:
+		ok = false
+		print("ENAMORADOS_FALLO la pareja no anda ", antes_a, " -> ", ahora_a)
+	if ahora_a.x < -2420.0 or ahora_a.x > -2200.0 or ahora_a.z < 35.0 or ahora_a.z > 175.0:
+		ok = false
+		print("ENAMORADOS_FALLO la pareja fuera del parque ", ahora_a)
+	print("ENAMORADOS_PRUEBA_OK celdas=", (datos.get("celdas", []) as Array).size(), " sentados=", sentados, " pasa=", ok)
+
 func _probar_carreras() -> void:
 	_records = {}
 	_mis_coches[_coche_activo]["danio"] = 0
@@ -12705,6 +12919,52 @@ func _mover_peatones(delta: float) -> void:
 			(dk["ci"] as Node3D).rotation.x = -0.35
 		if dk.get("cd") != null:
 			(dk["cd"] as Node3D).rotation.x = -0.35
+	# La pareja del Parque de los Enamorados, andando de la
+	# mano: una elipse de paseo por el parque, los dos en
+	# paso acompasado, los brazos de dentro inclinados el
+	# uno hacia el otro y la cabeza un poco girada hacia
+	# la pareja; los de fuera se balancean con el paso.
+	if not _pareja_enamorados.is_empty():
+		var cen_p := Vector2(-2311.0, 103.0)
+		var per_pa: Dictionary = _pareja_enamorados["a"]
+		var per_pb: Dictionary = _pareja_enamorados["b"]
+		var raiz_pa: Node3D = per_pa["raiz"]
+		var raiz_pb: Node3D = per_pb["raiz"]
+		var cerca_p := _jugador == null or Vector2(_jugador.position.x, _jugador.position.z).distance_to(cen_p) < 320.0
+		raiz_pa.visible = cerca_p
+		raiz_pb.visible = cerca_p
+		if cerca_p:
+			var tita := float(_pareja_enamorados["tita"])
+			var deriv := Vector2(-92.0 * sin(tita), 58.0 * cos(tita))
+			tita = fmod(tita + 1.3 * delta / maxf(deriv.length(), 1.0), TAU)
+			_pareja_enamorados["tita"] = tita
+			_pareja_enamorados["fase"] = float(_pareja_enamorados["fase"]) + delta * 5.4
+			var fase_p := float(_pareja_enamorados["fase"])
+			var pos_p := cen_p + Vector2(92.0 * cos(tita), 58.0 * sin(tita))
+			var tang := deriv.normalized()
+			var ry_p := atan2(tang.x, tang.y)
+			var lado_p := Vector2(cos(ry_p), -sin(ry_p))
+			var sitios: Array = [pos_p + lado_p * 0.38, pos_p - lado_p * 0.38]
+			var pers: Array = [per_pa, per_pb]
+			for k in 2:
+				var per_k: Dictionary = pers[k]
+				var raiz_k: Node3D = per_k["raiz"]
+				var sit: Vector2 = sitios[k]
+				raiz_k.position = Vector3(sit.x, _altura(sit.x, sit.y) + 0.95, sit.y)
+				raiz_k.rotation.y = ry_p
+				(per_k["pi"] as Node3D).rotation.x = sin(fase_p) * 0.5
+				(per_k["pd"] as Node3D).rotation.x = sin(fase_p + PI) * 0.5
+			# Brazos de dentro (los que se dan la mano): fijos
+			# e inclinados hacia la pareja; los de fuera,
+			# balanceo suave contra la pierna cercana.
+			(per_pa["bi"] as Node3D).rotation.z = 0.5
+			(per_pa["bi"] as Node3D).rotation.x = -0.15
+			(per_pb["bd"] as Node3D).rotation.z = -0.5
+			(per_pb["bd"] as Node3D).rotation.x = -0.15
+			(per_pa["bd"] as Node3D).rotation.x = sin(fase_p) * 0.3
+			(per_pb["bi"] as Node3D).rotation.x = sin(fase_p + PI) * 0.3
+			(per_pa["cabeza"] as Node3D).rotation.y = -0.3
+			(per_pb["cabeza"] as Node3D).rotation.y = 0.3
 
 func _cruce_seg(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> Vector2:
 	var r := b - a
@@ -14334,6 +14594,8 @@ func _capturar_si_toca() -> void:
 		_probar_buses()
 	elif args.has("probar_lineas"):
 		_probar_lineas()
+	elif args.has("probar_enamorados"):
+		_probar_enamorados()
 	elif args.has("probar_ra"):
 		_probar_ra()
 	elif args.has("probar_decathlon"):
@@ -14627,6 +14889,55 @@ func _capturar_si_toca() -> void:
 		var yp2 := _altura_terreno(-1155.0, -870.0)
 		_cam.look_at_from_position(Vector3(-1146.0, yp2 + 7.0, -826.0), Vector3(-1167.0, yp2 + 0.3, -866.0), Vector3.UP)
 		nombre = "piscina.png"
+	elif args.has("capturar_mapa_labrador"):
+		_aceptar_trabajo(0)
+		_abrir_mapa()
+		_mapa.set("_zoom", 3.5)
+		_mapa.set("_centro", Vector2(-350, 350))
+		_mapa.queue_redraw()
+		nombre = "mapa_labrador.png"
+	elif args.has("capturar_ruedas"):
+		# Un coche del trafico de cerca: las ruedas tienen que
+		# verse redondas, con su buje.
+		var coche_r: Node3D = _trafico[0]["nodo3d"]
+		_jugador.position = Vector3(coche_r.position.x + 3.0, _altura(coche_r.position.x, coche_r.position.z) + 0.95, coche_r.position.z + 3.0)
+		_cam.look_at_from_position(coche_r.position + Vector3(4.2, 1.1, 3.4), coche_r.position + Vector3(0, 0.35, 0), Vector3.UP)
+		nombre = "ruedas.png"
+	elif args.has("capturar_placas"):
+		# La esquina de Avenida Juan XXIII con Doctores
+		# Castroviejo: dos placas en el mismo punto, ahora
+		# apiladas en vertical y legibles.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(11, 470)) + Vector2i(dx, dy))
+		_jugador.position = Vector3(20.0, _altura(20.0, 458.0) + 0.95, 458.0)
+		_refrescar_rotulos()
+		_cam.look_at_from_position(Vector3(20.0, _altura(20.0, 458.0) + 2.4, 458.0), Vector3(11.0, _altura_terreno(11.0, 470.0) + 3.1, 470.0), Vector3.UP)
+		nombre = "placas.png"
+	elif args.has("capturar_enamorados"):
+		# La pareja del Parque de los Enamorados andando de la
+		# mano, con el cesped y los arboles del parque.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(-2311, 100)) + Vector2i(dx, dy))
+		_jugador.position = Vector3(-2311, _altura(-2311, 103) + 0.95, 103)
+		for i in 12:
+			_mover_peatones(0.1)
+		var pos_pj: Vector3 = (_pareja_enamorados["a"]["raiz"] as Node3D).position
+		_cam.look_at_from_position(pos_pj + Vector3(-6.0, 2.1, -6.5), pos_pj + Vector3(0, 0.4, 0), Vector3.UP)
+		nombre = "enamorados.png"
+	elif args.has("capturar_enamorados_banco"):
+		# La pareja sentada en el banco del parque.
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				_construir_tile(_tile_de(Vector2(-2311, 100)) + Vector2i(dx, dy))
+		_jugador.position = Vector3(-2311, _altura(-2311, 103) + 0.95, 103)
+		var datos_b := _datos_enamorados()
+		var b3: Array = datos_b["bancos"][3]
+		var pb := Vector3(float(b3[0]), _altura(float(b3[0]), float(b3[1])), float(b3[1]))
+		var frente_b := Vector3(sin(float(b3[2])), 0, cos(float(b3[2])))
+		_cam.look_at_from_position(pb + frente_b * 4.2 + Vector3(0, 1.5, 0), pb + Vector3(0, 0.7, 0), Vector3.UP)
+		nombre = "enamorados_banco.png"
 	elif args.has("capturar_piraguas"):
 		# Los piraguistas entre los dos puentes, vistos desde
 		# el Puente de Piedra hacia el de Hierro.
