@@ -101,6 +101,15 @@ var _btn_gas: Button = null
 var _btn_freno: Button = null
 var _btn_izq: Button = null
 var _btn_der: Button = null
+var _capa_pie: Control = null
+var _pad_pie: Control = null
+var _btn_arriba: Button = null
+var _toque_andar := Vector2.ZERO
+var _ta_u := false
+var _ta_d := false
+var _ta_l := false
+var _ta_r := false
+var _toque_correr := false
 var _toque_giro := 0.0
 var _toque_gas := false
 var _toque_freno := false
@@ -4657,9 +4666,18 @@ func _datos_minimapa() -> Dictionary:
 func _refrescar_tactil() -> void:
 	if _capa_conducir != null:
 		_capa_conducir.visible = _en_coche
+	if _capa_pie != null:
+		_capa_pie.visible = not _en_coche
+	if _btn_gas != null:
+		# En la bici no hay gas: el pedal se llama PEDALEAR.
+		_btn_gas.text = "▲ PEDALEAR" if _en_coche and _es_bici() else "▲ GAS"
 	if _joy_base != null:
 		_joy_base.visible = not _en_coche
 		_joy_perilla.visible = not _en_coche
+
+func _actualizar_toque_andar() -> void:
+	var v := Vector2(float(_ta_r) - float(_ta_l), float(_ta_d) - float(_ta_u))
+	_toque_andar = v.normalized() if v.length() > 1.0 else v
 
 var _corriendo := false
 var _brazo_i: Node3D
@@ -6057,7 +6075,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if _capa_tactil != null:
 			_capa_tactil.visible = true
-		if event.pressed and _joy_id == -1 and not _en_coche and not _panel_abierto and not _mapa_abierto and not _ayuda_abierta and not _panel_coches_abierto:
+		var en_pad := _pad_pie != null and _capa_pie != null and _capa_pie.visible and _pad_pie.get_global_rect().has_point(event.position)
+		if event.pressed and _joy_id == -1 and not _en_coche and not en_pad and not _panel_abierto and not _mapa_abierto and not _ayuda_abierta and not _panel_coches_abierto:
 			var vp := get_viewport().get_visible_rect().size
 			if event.position.x < vp.x * 0.45 and event.position.y > vp.y * 0.4:
 				_joy_id = event.index
@@ -6555,7 +6574,9 @@ func _andar(delta: float) -> void:
 		var pad_dir := Vector2(_pad_eje(JOY_AXIS_LEFT_X), _pad_eje(JOY_AXIS_LEFT_Y))
 		if pad_dir.length() > 0.2:
 			dir = pad_dir
-		_corriendo = Input.is_key_pressed(KEY_SPACE)
+		if _toque_andar.length() > 0.15:
+			dir = _toque_andar
+		_corriendo = Input.is_key_pressed(KEY_SPACE) or _toque_correr
 		if dir.length() > 0.01:
 			# El joystick y el stick apuntan: andas hacia donde empujas.
 			vel = Vector3(dir.x, 0, dir.y).normalized() * (10.2 if _corriendo else 6.0)
@@ -6686,6 +6707,8 @@ func _nadar(delta: float) -> void:
 	var pad_dir := Vector2(_pad_eje(JOY_AXIS_LEFT_X), _pad_eje(JOY_AXIS_LEFT_Y))
 	if pad_dir.length() > 0.2:
 		dir = pad_dir
+	if _toque_andar.length() > 0.15:
+		dir = _toque_andar
 	var deseo := Vector2.ZERO
 	if dir.length() > 0.01:
 		deseo = dir.normalized()
@@ -9607,6 +9630,19 @@ func _colocar_joy() -> void:
 	_joy_base.position = centro - Vector2(75, 75)
 	_joy_perilla.position = centro + _joy_valor * 44.0 - Vector2(31, 31)
 
+func _boton_pad(texto: String, pos: Vector2) -> Button:
+	var b := Button.new()
+	b.text = texto
+	b.position = pos
+	b.size = Vector2(88, 88)
+	b.add_theme_font_size_override("font_size", 34)
+	b.add_theme_color_override("font_color", Color(1, 1, 1))
+	b.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 44))
+	b.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 44))
+	b.add_theme_stylebox_override("focus", _estilo_caja(Color(0, 0, 0, 0), 44))
+	_pad_pie.add_child(b)
+	return b
+
 func _crear_tactil() -> void:
 	_capa_tactil = CanvasLayer.new()
 	_capa_tactil.layer = 3
@@ -9709,6 +9745,49 @@ func _crear_tactil() -> void:
 	freno.button_down.connect(func() -> void: _toque_freno = true)
 	freno.button_up.connect(func() -> void: _toque_freno = false)
 	_capa_conducir.add_child(freno)
+	# Cruceta del peatón (solo visible a pie): botones para
+	# andar y girar sin depender del joystick flotante, como
+	# en el modelo (pedido de Jon, 2026-11-24). Alimenta
+	# _toque_andar, que el movimiento lee tras el joystick.
+	_capa_pie = Control.new()
+	_capa_pie.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_capa_pie.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_capa_tactil.add_child(_capa_pie)
+	_pad_pie = Control.new()
+	_pad_pie.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_pad_pie.offset_left = 10
+	_pad_pie.offset_top = -286
+	_pad_pie.offset_right = 286
+	_pad_pie.offset_bottom = -10
+	_pad_pie.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_capa_pie.add_child(_pad_pie)
+	_btn_arriba = _boton_pad("▲", Vector2(94, 0))
+	_btn_arriba.button_down.connect(func() -> void: _ta_u = true; _actualizar_toque_andar())
+	_btn_arriba.button_up.connect(func() -> void: _ta_u = false; _actualizar_toque_andar())
+	var b_abajo := _boton_pad("▼", Vector2(94, 188))
+	b_abajo.button_down.connect(func() -> void: _ta_d = true; _actualizar_toque_andar())
+	b_abajo.button_up.connect(func() -> void: _ta_d = false; _actualizar_toque_andar())
+	var b_izqp := _boton_pad("◀", Vector2(0, 94))
+	b_izqp.button_down.connect(func() -> void: _ta_l = true; _actualizar_toque_andar())
+	b_izqp.button_up.connect(func() -> void: _ta_l = false; _actualizar_toque_andar())
+	var b_derp := _boton_pad("▶", Vector2(188, 94))
+	b_derp.button_down.connect(func() -> void: _ta_r = true; _actualizar_toque_andar())
+	b_derp.button_up.connect(func() -> void: _ta_r = false; _actualizar_toque_andar())
+	var correr := Button.new()
+	correr.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	correr.offset_left = -146
+	correr.offset_right = -18
+	correr.offset_top = -152
+	correr.offset_bottom = -22
+	correr.text = "CORRER"
+	correr.add_theme_font_size_override("font_size", 26)
+	correr.add_theme_color_override("font_color", Color(1, 1, 1))
+	correr.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 50))
+	correr.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 50))
+	correr.add_theme_stylebox_override("focus", _estilo_caja(Color(0, 0, 0, 0), 50))
+	correr.button_down.connect(func() -> void: _toque_correr = true)
+	correr.button_up.connect(func() -> void: _toque_correr = false)
+	_capa_pie.add_child(correr)
 	add_child(_capa_tactil)
 	_capa_tactil.visible = DisplayServer.is_touchscreen_available()
 	_colocar_joy()
@@ -17099,7 +17178,29 @@ func _capturar_si_toca() -> void:
 			gas_ok = gas_ok and not _toque_gas
 		_en_coche = false
 		_refrescar_tactil()
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok)
+		# Cruceta del peatón: visible a pie, oculta en el
+		# coche, y su botón de arriba pone _toque_andar.
+		var pie_btn_ok: bool = _capa_pie != null and _capa_pie.visible
+		var andar_ok := false
+		if _btn_arriba != null:
+			_btn_arriba.button_down.emit()
+			andar_ok = _toque_andar == Vector2(0, -1)
+			_btn_arriba.button_up.emit()
+			andar_ok = andar_ok and _toque_andar == Vector2.ZERO
+		# En la bici el pedal de gas se llama PEDALEAR y la
+		# cruceta deja paso a la capa de conducir.
+		var activo0 := _coche_activo
+		_mis_coches.append({"id": 12, "danio": 0, "motor": 0, "frenos": 0})
+		_coche_activo = _mis_coches.size() - 1
+		_en_coche = true
+		_refrescar_tactil()
+		var bici_ok: bool = _btn_gas != null and _btn_gas.text == "▲ PEDALEAR" and _capa_conducir.visible and not _capa_pie.visible
+		_mis_coches.remove_at(_mis_coches.size() - 1)
+		_coche_activo = activo0
+		_en_coche = false
+		_refrescar_tactil()
+		bici_ok = bici_ok and _btn_gas.text == "▲ GAS"
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
