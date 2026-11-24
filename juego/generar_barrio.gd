@@ -97,6 +97,10 @@ var _ruta_mini: Array = []
 var _ruta_mini_de := Vector3.INF
 var _ruta_mini_a := Vector3.INF
 var _capa_conducir: Control = null
+var _btn_gas: Button = null
+var _btn_freno: Button = null
+var _btn_izq: Button = null
+var _btn_der: Button = null
 var _toque_giro := 0.0
 var _toque_gas := false
 var _toque_freno := false
@@ -300,7 +304,23 @@ func _choca_entidad(p: Vector2, radio: float, excluir: Node3D) -> bool:
 				return true
 	return false
 
+func _escalar_interfaz_movil() -> void:
+	# En el móvil la ventana real tiene muchos más píxeles que la
+	# ventana de diseño (1152×648): sin escalado, los textos y los
+	# botones táctiles se ven minúsculos («todo lo que está
+	# escrito se ve muy pequeño», Jon, 2026-11-24). En pantallas
+	# táctiles la interfaz se dibuja en unidades de diseño y
+	# Godot la escala a la ventana real; en escritorio (sin
+	# pantalla táctil) no cambia nada.
+	if not DisplayServer.is_touchscreen_available():
+		return
+	var w := get_tree().root
+	w.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	w.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	w.content_scale_size = Vector2i(1152, 648)
+
 func _ready() -> void:
+	_escalar_interfaz_movil()
 	_cargar_portales()
 	_cargar_partida()
 	_cargar_terreno()
@@ -9630,7 +9650,8 @@ func _crear_tactil() -> void:
 	hb.add_theme_constant_override("separation", 6)
 	barra.add_child(hb)
 	var b_izq := Button.new()
-	b_izq.text = "<"
+	_btn_izq = b_izq
+	b_izq.text = "◀"
 	b_izq.flat = true
 	b_izq.custom_minimum_size = Vector2(64, 0)
 	b_izq.add_theme_font_size_override("font_size", 38)
@@ -9647,7 +9668,8 @@ func _crear_tactil() -> void:
 	ic_vol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hb.add_child(ic_vol)
 	var b_der := Button.new()
-	b_der.text = ">"
+	_btn_der = b_der
+	b_der.text = "▶"
 	b_der.flat = true
 	b_der.custom_minimum_size = Vector2(64, 0)
 	b_der.add_theme_font_size_override("font_size", 38)
@@ -9656,13 +9678,14 @@ func _crear_tactil() -> void:
 	b_der.button_up.connect(func() -> void: if _toque_giro > 0.0: _toque_giro = 0.0)
 	hb.add_child(b_der)
 	var gas := Button.new()
+	_btn_gas = gas
 	gas.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	gas.offset_left = -118
+	gas.offset_left = -146
 	gas.offset_right = -18
-	gas.offset_top = -142
+	gas.offset_top = -152
 	gas.offset_bottom = -22
-	gas.text = "↑"
-	gas.add_theme_font_size_override("font_size", 38)
+	gas.text = "▲ GAS"
+	gas.add_theme_font_size_override("font_size", 30)
 	gas.add_theme_color_override("font_color", Color(1, 1, 1))
 	gas.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 50))
 	gas.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 50))
@@ -9671,13 +9694,14 @@ func _crear_tactil() -> void:
 	gas.button_up.connect(func() -> void: _toque_gas = false)
 	_capa_conducir.add_child(gas)
 	var freno := Button.new()
+	_btn_freno = freno
 	freno.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	freno.offset_left = -238
-	freno.offset_right = -138
-	freno.offset_top = -142
+	freno.offset_left = -282
+	freno.offset_right = -154
+	freno.offset_top = -152
 	freno.offset_bottom = -22
-	freno.text = "="
-	freno.add_theme_font_size_override("font_size", 34)
+	freno.text = "▼ FRENO"
+	freno.add_theme_font_size_override("font_size", 30)
 	freno.add_theme_color_override("font_color", Color(1, 1, 1))
 	freno.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 50))
 	freno.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 50))
@@ -17056,6 +17080,26 @@ func _capturar_si_toca() -> void:
 			if _superficie_en(Vector2(float(celdas_p[ic][0]), float(celdas_p[ic][1]))) == "paso_hierba":
 				hierba_ok = true
 		print("PASOS_OK pasa=", pasos_ok and hierba_ok, " banco=", _banco.size(), " segmentos=", _seg_calles.size())
+		# Controles táctiles de conducción: a pie manda el
+		# joystick y la capa de conducir está oculta; al subir
+		# al coche aparecen el volante y los pedales, y el
+		# pedal de gas pone _toque_gas (lo que lee _conducir).
+		_capa_tactil.visible = true
+		_en_coche = false
+		_refrescar_tactil()
+		var pie_ok: bool = _capa_conducir != null and not _capa_conducir.visible and _joy_base.visible
+		_en_coche = true
+		_refrescar_tactil()
+		var coche_ok: bool = _capa_conducir.visible and not _joy_base.visible
+		var gas_ok := false
+		if _btn_gas != null:
+			_btn_gas.button_down.emit()
+			gas_ok = _toque_gas
+			_btn_gas.button_up.emit()
+			gas_ok = gas_ok and not _toque_gas
+		_en_coche = false
+		_refrescar_tactil()
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
