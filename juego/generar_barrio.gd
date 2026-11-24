@@ -275,6 +275,8 @@ func _choca_entidad(p: Vector2, radio: float, excluir: Node3D) -> bool:
 			return true
 	for est2 in _estaticos:
 		var raiz_e: Node3D = est2["raiz"]
+		if not is_instance_valid(raiz_e):
+			continue
 		if raiz_e == excluir:
 			continue
 		var pe := Vector2(raiz_e.position.x, raiz_e.position.z)
@@ -3197,10 +3199,27 @@ func _procesar_tiles(delta: float) -> void:
 	if _en_interior != "":
 		return
 	_tile_timer += delta
-	if _tile_timer < 0.35:
+	# La baldosa del jugador manda: si aún no está construida,
+	# la cola se acelera y ella va primero. Sin esto, al entrar
+	# en una zona nueva (las baldosas densas tardan en hacerse)
+	# se veían unos segundos de vacío gris alrededor — Jon lo
+	# vio entrando en la Gran Vía, 2026-11-24: «pierdo todo».
+	var ancla := _jugador.position
+	if _en_bus and _bus != null:
+		ancla = _bus.position
+	elif _en_coche:
+		ancla = _coche.position
+	var propia := _tile_de(Vector2(ancla.x, ancla.z))
+	var falta_propia := not _tiles.has(_clave_tile(propia))
+	if _tile_timer < (0.12 if falta_propia else 0.35):
 		return
 	_tile_timer = 0.0
 	_actualizar_tiles()
+	if falta_propia:
+		var qi := _cola_tiles.find(propia)
+		if qi > 0:
+			_cola_tiles.remove_at(qi)
+			_cola_tiles.push_front(propia)
 	if not _cola_tiles.is_empty():
 		_construir_tile(_cola_tiles.pop_front(), false)
 
@@ -3851,10 +3870,12 @@ func _locales_tile(cont: Node3D, locales: Array) -> void:
 				_caja_en(verts, normals, cols, Vector3(pb.x, yb + 0.62, pb.y), Vector3(0.69, 0.07, 0.69), Color(0.25, 0.18, 0.12), rot)
 		if int(l["tz"]) == 1:
 			var mesas := 0
-			# Las cuatro cafeterías del Espolón (Ibiza, La Rosaleda,
-			# Delicias y Cuatro) llevan terraza grande: 6 mesas en dos
-			# filas y clientes sentados, como las de verdad.
-			var n_mesas := 6 if String(l["n"]) in ["Ibiza", "La Rosaleda", "Cafe Delicias", "Bar Cuatro", "Café Kiosco La Fundación"] else 3
+			# Las cafeterías del Espolón (Ibiza, La Rosaleda,
+			# Delicias y Cuatro), el Café Kiosco y el Bar Opera
+			# de la esquina de San Antón con Gran Vía llevan
+			# terraza grande: 6 mesas en dos filas y clientes
+			# sentados, como las de verdad.
+			var n_mesas := 6 if String(l["n"]) in ["Ibiza", "La Rosaleda", "Cafe Delicias", "Bar Cuatro", "Café Kiosco La Fundación", "Bar Opera"] else 3
 			for m in n_mesas:
 				var lat := (float(m % 3) - 1.0) * 1.9
 				var tp := frente + hacia * ((1.95 if zona_p else 2.6) + 0.4 * float(m % 2) + 1.7 * float(m / 3)) + dir * lat
@@ -3881,7 +3902,12 @@ func _locales_tile(cont: Node3D, locales: Array) -> void:
 					var raiz_s: Node3D = per_s["raiz"]
 					raiz_s.position = Vector3(tp_s.x, _altura(tp_s.x, tp_s.y) + 0.52, tp_s.y)
 					raiz_s.rotation.y = atan2(-dir.x, -dir.y)
-					add_child(raiz_s)
+					# Hijos de la baldosa, no de la raíz: al
+					# liberarse la baldosa se van con ella.
+					# Antes quedaban en la escena para siempre
+					# y cada reconstrucción sumaba otra pareja
+					# (fuga medida en el Espolón, 2026-11-24).
+					cont.add_child(raiz_s)
 					(per_s["pi"] as Node3D).rotation.x = -1.25
 					(per_s["pd"] as Node3D).rotation.x = -1.25
 					_estaticos.append({"d": per_s, "raiz": raiz_s, "tipo": "sentado", "fase": _rng.randf() * 6.0})
@@ -6211,14 +6237,22 @@ func _actualizar_camara(delta: float) -> void:
 	var f := 1.0
 	while f > 0.2 and _choca(Vector2(objetivo.x + desplazamiento.x * f, objetivo.z + desplazamiento.z * f), 0.3):
 		f -= 0.15
-	if _choca(Vector2(objetivo.x, objetivo.z), 0.3):
+	if _en_interior == "" and _choca(Vector2(objetivo.x, objetivo.z), 0.3):
 		# El propio jugador (o el coche) está dentro de un edificio:
 		# cenital alta, sobre los tejados, para ver dónde estás y salir.
+		# Solo en la calle: dentro de un interior el jugador se
+		# sienta y se apoya en muebles cuyos rectángulos también
+		# son polígonos de colisión (los bancos de las capillas,
+		# el presbiterio), y eso no es estar dentro de un
+		# edificio. Con la cenital de 75 m la capilla se veía
+		# diminuta desde el cielo al sentarse (aviso de Jon
+		# probando Glera, 2026-11-24).
 		deseada = objetivo + Vector3(0, 75, 0.5)
 	elif _choca(Vector2(objetivo.x + desplazamiento.x * f, objetivo.z + desplazamiento.z * f), 0.3):
 		# Ni acercándola cabe (p. ej. espalda contra una pared):
 		# vista cenital sobre el jugador, cuya columna siempre está libre.
-		deseada = objetivo + Vector3(0, 14, 0.5)
+		# En un interior basta subir justo sobre la sala.
+		deseada = objetivo + Vector3(0, 6.0 if _en_interior != "" else 14.0, 0.5)
 	else:
 		deseada = objetivo + Vector3(desplazamiento.x * f, 0, desplazamiento.z * f) + Vector3(0, alto, 0)
 		# Altura final: sobre el terreno en su posición definitiva y nunca a ras
@@ -7853,6 +7887,11 @@ func _probar_capilla() -> void:
 	pasa = pasa and acc_s == "sentarse:0"
 	_ejecutar_accion_interior(acc_s)
 	pasa = pasa and _postura == "sentado" and _jugador.position.distance_to(asientos_s[0]) < 0.01
+	# La cámara tampoco se dispara aquí al sentarse.
+	_cam.position = _jugador.position + Vector3(0, 2, 2)
+	for i in 40:
+		_actualizar_camara(0.05)
+	pasa = pasa and _cam.position.distance_to(_jugador.position) < 15.0
 	_ejecutar_accion_interior("levantarse")
 	pasa = pasa and _postura == "" and not _sentado
 	var rec_s: Vector3 = _misa["reclinatorio_jugador"]
@@ -7900,6 +7939,13 @@ func _probar_glera() -> void:
 	pasa = pasa and acc == "sentarse:0"
 	_ejecutar_accion_interior(acc)
 	pasa = pasa and _postura == "sentado" and _jugador.position.distance_to(asientos_g[0]) < 0.01
+	# La cámara se queda cerca al sentarse: el banco es un
+	# sólido, no un edificio, y no debe saltar la cenital
+	# de rescate de 75 m (el aviso de Jon en Glera).
+	_cam.position = _jugador.position + Vector3(0, 2, 2)
+	for i in 40:
+		_actualizar_camara(0.05)
+	pasa = pasa and _cam.position.distance_to(_jugador.position) < 15.0
 	pasa = pasa and _accion_interior_cercana() == "levantarse"
 	_ejecutar_accion_interior("levantarse")
 	pasa = pasa and _postura == "" and not _sentado and _jugador.position.distance_to(pies_g[0]) < 0.01
@@ -13843,7 +13889,14 @@ func _mover_peatones(delta: float) -> void:
 		raiz.position.y += absf(sin(float(peat["fase"]))) * 0.035
 		raiz.rotation.z = sin(float(peat["fase"])) * 0.03
 	# Fase 9: comportamientos quietos, perros y pájaros
-	for est in _estaticos:
+	for ei in range(_estaticos.size() - 1, -1, -1):
+		var est: Dictionary = _estaticos[ei]
+		if not is_instance_valid(est["raiz"]):
+			# Su baldosa se liberó y el nodo ya no existe
+			# (los clientes de terraza son hijos de la
+			# baldosa): se retira de la lista y a otra cosa.
+			_estaticos.remove_at(ei)
+			continue
 		var d2: Dictionary = est["d"]
 		var f2 := float(est["fase"])
 		var raiz_e: Node3D = est["raiz"]

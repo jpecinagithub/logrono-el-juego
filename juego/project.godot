@@ -5,9 +5,9 @@ config_version=5
 
 [application]
 
-config/name="Logroño: El Juego (prototipo)"
+config/name="Logroño: El Juego"
 run/main_scene="res://main.tscn"
-config/icon="res://icon.svg"
+config/icon="res://iconos/icon_512.png"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
 [rendering]

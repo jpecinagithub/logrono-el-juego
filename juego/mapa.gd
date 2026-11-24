@@ -170,13 +170,15 @@ func _draw() -> void:
 			var pp2 := _conv(par, ox, oy, escala)
 			draw_circle(pp2, 2.6, Color(1, 1, 1))
 			draw_circle(pp2, 1.3, col_l)
-	# Lugares: punto para todos los destacados; nombre solo en los
-	# principales (a esta escala, 400 rótulos se pisan unos a otros)
+	# Lugares: punto y nombre para TODOS los destacados
+	# (pedido de Jon, 2026-11-24: «que todos los puntos del
+	# mapa tengan su cartel con el nombre, no repitas»). Cada
+	# punto se rotula una sola vez, en este único bucle: los
+	# que antes eran «principales» (c=1) no se duplican.
 	for poi in datos["pois"]:
 		var pp := _conv([poi["x"], poi["z"]], ox, oy, escala)
 		draw_circle(pp, 4.0, Color(1.0, 0.78, 0.2))
-		if int(poi.get("c", 0)) == 1:
-			draw_string(fuente, pp + Vector2(7, 4), String(poi["n"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.95, 0.90, 0.70))
+		draw_string(fuente, pp + Vector2(7, 4), String(poi["n"]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.95, 0.90, 0.70))
 	# El lugar bajo el ratón se anilla y se nombra, sea
 	# principal o no: así se sabe qué es cada punto dorado
 	# antes de clicar para ir allí.
