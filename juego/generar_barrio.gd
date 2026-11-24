@@ -1161,156 +1161,23 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 					(extremos[clave_e]["brazos"] as Array).append(brazo_e)
 				else:
 					extremos[clave_e] = {"n": 1, "pos": ext, "brazos": [brazo_e]}
-	var _nc := 0
-	var _trel2 := Time.get_ticks_msec()
-	for calle in calles:
-		_nc += 1
-		if not inmediato and _nc % 100 == 0 and Time.get_ticks_msec() - _trel2 > 9:
-			await get_tree().process_frame
-			_trel2 = Time.get_ticks_msec()
-			if vigia != null and not is_instance_valid(vigia):
-				return null
-		var medio: float = float(calle["a"]) * 0.5
-		var clase := String(calle["c"])
-		var con_acera := clase in ["primary", "secondary", "tertiary", "residential", "living_street"] and medio >= 2.75
-		var pts: Array = []
-		var base_pts: Array[Vector2] = []
-		for q in calle["p"]:
-			base_pts.append(Vector2(float(q[0]), float(q[1])))
-		# Registro de tramos para el sonido de pasos: la
-		# superficie que pisas (asfalto o acera) se decide
-		# contra estos segmentos, sin duplicados (la misma
-		# calle aparece en las baldosas vecinas).
-		for i2 in range(1, base_pts.size()):
-			var sa: Vector2 = base_pts[i2 - 1]
-			var sb: Vector2 = base_pts[i2]
-			var clave_s := str(int(round(sa.x))) + "," + str(int(round(sa.y))) + ">" + str(int(round(sb.x))) + "," + str(int(round(sb.y)))
-			var clave_s2 := str(int(round(sb.x))) + "," + str(int(round(sb.y))) + ">" + str(int(round(sa.x))) + "," + str(int(round(sa.y)))
-			if _seg_vistos.has(clave_s) or _seg_vistos.has(clave_s2):
-				continue
-			_seg_vistos[clave_s] = true
-			_seg_calles.append([sa, sb, medio, con_acera])
-		for i in base_pts.size():
-			if i > 0:
-				var desde_p: Vector2 = base_pts[i - 1]
-				var hasta_p: Vector2 = base_pts[i]
-				var tramos := int(ceil(desde_p.distance_to(hasta_p) / 6.0))
-				for k in range(1, tramos):
-					var mp: Vector2 = desde_p.lerp(hasta_p, float(k) / float(tramos))
-					pts.append([mp.x, mp.y])
-			pts.append([base_pts[i].x, base_pts[i].y])
-		var ant_izq := Vector3.ZERO
-		var ant_der := Vector3.ZERO
-		var ant_centro := Vector3.ZERO
-		var recorrido_c := 0.0
-		var ant_borde: Array = []
-		var ant_ai := Vector3.ZERO
-		var ant_ao := Vector3.ZERO
-		var ant_di := Vector3.ZERO
-		var ant_do := Vector3.ZERO
-		var primero := true
-		for i in pts.size():
-			var p := Vector2(float(pts[i][0]), float(pts[i][1]))
-			var dir := Vector2.ZERO
-			if i > 0:
-				dir += p - Vector2(float(pts[i - 1][0]), float(pts[i - 1][1]))
-			if i < pts.size() - 1:
-				dir += Vector2(float(pts[i + 1][0]), float(pts[i + 1][1])) - p
-			if dir.length() < 0.001:
-				continue
-			dir = dir.normalized()
-			var normal2 := Vector2(-dir.y, dir.x)
-			# Cada vértice se apoya en SU terreno (antes toda la sección
-			# iba plana a la altura del centro: en calles con pendiente
-			# lateral un borde flotaba como una losa y el otro quedaba
-			# enterrado). En los puentes el tablero sí es plano: allí se
-			# mantiene la altura del centro en toda la sección.
-			var y_c := _altura(p.x, p.y)
-			var en_puente := y_c > _altura_terreno(p.x, p.y) + 0.05
-			var alt := func(qx: float, qz: float, off: float) -> float:
-				return (y_c if en_puente else _altura(qx, qz)) + off
-			var xz_izq: Vector2 = p + normal2 * medio
-			var xz_der := p - normal2 * medio
-			var izq := Vector3(xz_izq.x, alt.call(xz_izq.x, xz_izq.y, 0.08), xz_izq.y)
-			var der := Vector3(xz_der.x, alt.call(xz_der.x, xz_der.y, 0.08), xz_der.y)
-			var xz_ai: Vector2 = p + normal2 * (medio + 0.05)
-			var xz_ao: Vector2 = p + normal2 * (medio + 1.75)
-			var xz_di := p - normal2 * (medio + 0.05)
-			var xz_do := p - normal2 * (medio + 1.75)
-			var ai := Vector3(xz_ai.x, alt.call(xz_ai.x, xz_ai.y, 0.17), xz_ai.y)
-			var ao := Vector3(xz_ao.x, alt.call(xz_ao.x, xz_ao.y, 0.17), xz_ao.y)
-			var di := Vector3(xz_di.x, alt.call(xz_di.x, xz_di.y, 0.17), xz_di.y)
-			var do2 := Vector3(xz_do.x, alt.call(xz_do.x, xz_do.y, 0.17), xz_do.y)
-			var cen3 := Vector3(p.x, alt.call(p.x, p.y, 0.095), p.y)
-			if not primero:
-				_tri(cv, cn, PackedColorArray(), ant_izq, der, ant_der, true, Color.WHITE)
-				_tri(cv, cn, PackedColorArray(), ant_izq, izq, der, true, Color.WHITE)
-				if con_acera:
-					_tri(sv, sn, PackedColorArray(), ant_ai, ao, ant_ao, true, Color.WHITE)
-					_tri(sv, sn, PackedColorArray(), ant_ai, ai, ao, true, Color.WHITE)
-					_tri(sv, sn, PackedColorArray(), ant_di, ant_do, do2, true, Color.WHITE)
-					_tri(sv, sn, PackedColorArray(), ant_di, do2, di, true, Color.WHITE)
-					# El bordillo (Tanda 14): la cara vertical entre
-					# la calzada (+0,08) y la acera (+0,17). Sin ella
-					# la acera era una cinta flotante sin canto.
-					var col_bord := Color(0.52, 0.50, 0.47)
-					_tri(bv, bn, bc, ant_izq, izq, ant_ai, true, col_bord)
-					_tri(bv, bn, bc, izq, ai, ant_ai, true, col_bord)
-					_tri(bv, bn, bc, ant_der, ant_di, der, true, col_bord)
-					_tri(bv, bn, bc, der, ant_di, di, true, col_bord)
-				# Línea central discontinua en las calles anchas
-				# (Tanda 14): trazos de ~5,5 m cada 10 m.
-				if medio >= 3.25 and clase in ["primary", "secondary", "tertiary"]:
-					if fmod(recorrido_c, 10.0) < 5.5:
-						var n3 := Vector3(normal2.x, 0, normal2.y)
-						_tri(bv, bn, bc, ant_centro + n3 * 0.07, cen3 - n3 * 0.07, ant_centro - n3 * 0.07, true, Color(0.88, 0.88, 0.86))
-						_tri(bv, bn, bc, ant_centro + n3 * 0.07, cen3 + n3 * 0.07, cen3 - n3 * 0.07, true, Color(0.88, 0.88, 0.86))
-					recorrido_c += ant_centro.distance_to(cen3)
-			if medio >= 2.25:
-				var lados_b: Array = []
-				for sgn in [1.0, -1.0]:
-					var xz_go: Vector2 = p + normal2 * sgn * (medio - 0.03)
-					var xz_gi: Vector2 = p + normal2 * sgn * (medio - 0.58)
-					var xz_lo: Vector2 = p + normal2 * sgn * (medio - 0.31)
-					var xz_li: Vector2 = p + normal2 * sgn * (medio - 0.46)
-					var go := Vector3(xz_go.x, alt.call(xz_go.x, xz_go.y, 0.092), xz_go.y)
-					var gi := Vector3(xz_gi.x, alt.call(xz_gi.x, xz_gi.y, 0.092), xz_gi.y)
-					var lo := Vector3(xz_lo.x, alt.call(xz_lo.x, xz_lo.y, 0.106), xz_lo.y)
-					var li := Vector3(xz_li.x, alt.call(xz_li.x, xz_li.y, 0.106), xz_li.y)
-					lados_b.append([go, gi, lo, li])
-				if not primero:
-					for sb in range(2):
-						var pa: Array = ant_borde[sb]
-						var pb: Array = lados_b[sb]
-						_tri(bv, bn, bc, pa[0], pb[0], pa[1], true, Color(0.20, 0.20, 0.22))
-						_tri(bv, bn, bc, pb[0], pb[1], pa[1], true, Color(0.20, 0.20, 0.22))
-						_tri(bv, bn, bc, pa[2], pb[2], pa[3], true, Color(0.85, 0.84, 0.78))
-						_tri(bv, bn, bc, pb[2], pb[3], pa[3], true, Color(0.85, 0.84, 0.78))
-				ant_borde = lados_b
-			ant_izq = izq
-			ant_der = der
-			ant_centro = cen3
-			ant_ai = ai
-			ant_ao = ao
-			ant_di = di
-			ant_do = do2
-			primero = false
-	# Parche de cruce (revisión de cruces, 2026-11-24): las
-	# cintas de acera y bordillo de cada calle se dibujan
-	# rectas a través de los cruces, y pintaban bandas grises
-	# sobre el asfalto de la calle que cruza (capturas de Jon:
-	# «las franjas grises no tienen sentido»). En cada cruce
-	# se funde un disco de asfalto a +0,185 — sobre la acera
-	# (+0,17) — que tapa todo lo que cruce por dentro del
-	# cruce: aceras, bordillos, líneas y trazos centrales.
-	# Los pasos de cebra arrancan fuera del disco.
 	# Cruces AGRUPADOS (revisión de cruces, 2026-11-24): los
 	# extremos sueltos engañan. Una avenida de dos calzadas
 	# registra dos puntos a pocos metros, y cada uno pintaba
 	# su propio paso: de ahí los pasos cruzados en celosía
 	# de las capturas de Jon. Se agrupan los extremos a
 	# menos de 14 m en un solo cruce, con los brazos juntos
-	# y sin repetir dirección.
+	# y sin repetir dirección. Se calculan ANTES de dibujar
+	# las calles (segunda revisión, 2026-11-24): las cintas
+	# de acera, bordillo y líneas de cada calle se dibujaban
+	# rectas a través de los cruces y, donde el parche no
+	# llegaba (tope de 40 por baldosa), quedaban losas
+	# grises torcidas sobre la calzada de la calle que
+	# cruza (captura de Jon en Alcalde Emilio Francés:
+	# «sigue habiendo cosas raras, vas a tener que revisar
+	# todos los cruces»). Ahora cada cinta se RECORTA al
+	# llegar a la zona del cruce y el parche se pinta en
+	# todos los cruces, sin tope.
 	var cruces: Array = []
 	var asignado := {}
 	var claves_x: Array = extremos.keys()
@@ -1363,27 +1230,221 @@ func _construir_calles_tile(calles: Array, vigia: Node3D = null, inmediato := tr
 				radial_x = (cen_x - cc2).normalized()
 				break
 		cruces.append({"centro": cen_x, "brazos": brazos_x, "n": peso_x, "anillo": anillo_x, "radial": radial_x, "dist": dist_x})
+	# Radio del parche de cada cruce y zonas de recorte:
+	# la zona es el disco que el parche va a tapar; las
+	# cintas que caigan dentro no se dibujan.
+	var zonas: Array = []
+	for cruce in cruces:
+		var radio_b := float(cruce["dist"])
+		var clase_b := false
+		for br in cruce["brazos"]:
+			radio_b = maxf(radio_b, float(cruce["dist"]) + float(br["ancho"]) * 0.5)
+			if ["primary", "secondary", "tertiary", "residential", "unclassified", "living_street"].has(String(br["clase"])):
+				clase_b = true
+		var tapado_b := not bool(cruce["anillo"]) and int(cruce["n"]) >= 3 and clase_b and radio_b >= 2.0
+		if tapado_b:
+			var cen_b: Vector2 = cruce["centro"]
+			if _altura(cen_b.x, cen_b.y) > _altura_terreno(cen_b.x, cen_b.y) + 0.05:
+				tapado_b = false  # sobre un puente no: el disco flotaría
+		cruce["radio"] = radio_b + 0.55
+		cruce["tapado"] = tapado_b
+		if tapado_b:
+			zonas.append([cruce["centro"], radio_b + 0.55])
+	var zonas_celda := {}
+	for zi in zonas.size():
+		var zz: Array = zonas[zi]
+		var zcen: Vector2 = zz[0]
+		var zrad := float(zz[1])
+		var gx0 := int(floor((zcen.x - zrad) / 40.0))
+		var gx1 := int(floor((zcen.x + zrad) / 40.0))
+		var gz0 := int(floor((zcen.y - zrad) / 40.0))
+		var gz1 := int(floor((zcen.y + zrad) / 40.0))
+		for gx in range(gx0, gx1 + 1):
+			for gz in range(gz0, gz1 + 1):
+				var clave_g := str(gx) + "," + str(gz)
+				if not zonas_celda.has(clave_g):
+					zonas_celda[clave_g] = []
+				zonas_celda[clave_g].append(zi)
+	var en_zona := func(p: Vector2) -> bool:
+		var clave_p := str(int(floor(p.x / 40.0))) + "," + str(int(floor(p.y / 40.0)))
+		if not zonas_celda.has(clave_p):
+			return false
+		for zi2 in zonas_celda[clave_p]:
+			var zz2: Array = zonas[int(zi2)]
+			var zc3: Vector2 = zz2[0]
+			var zr3 := float(zz2[1])
+			if p.distance_squared_to(zc3) < zr3 * zr3:
+				return true
+		return false
+	var _nc := 0
+	var _trel2 := Time.get_ticks_msec()
+	for calle in calles:
+		_nc += 1
+		if not inmediato and _nc % 100 == 0 and Time.get_ticks_msec() - _trel2 > 9:
+			await get_tree().process_frame
+			_trel2 = Time.get_ticks_msec()
+			if vigia != null and not is_instance_valid(vigia):
+				return null
+		var medio: float = float(calle["a"]) * 0.5
+		var clase := String(calle["c"])
+		var con_acera := clase in ["primary", "secondary", "tertiary", "residential", "living_street"] and medio >= 2.75
+		var pts: Array = []
+		var base_pts: Array[Vector2] = []
+		for q in calle["p"]:
+			base_pts.append(Vector2(float(q[0]), float(q[1])))
+		# Registro de tramos para el sonido de pasos: la
+		# superficie que pisas (asfalto o acera) se decide
+		# contra estos segmentos, sin duplicados (la misma
+		# calle aparece en las baldosas vecinas).
+		for i2 in range(1, base_pts.size()):
+			var sa: Vector2 = base_pts[i2 - 1]
+			var sb: Vector2 = base_pts[i2]
+			var clave_s := str(int(round(sa.x))) + "," + str(int(round(sa.y))) + ">" + str(int(round(sb.x))) + "," + str(int(round(sb.y)))
+			var clave_s2 := str(int(round(sb.x))) + "," + str(int(round(sb.y))) + ">" + str(int(round(sa.x))) + "," + str(int(round(sa.y)))
+			if _seg_vistos.has(clave_s) or _seg_vistos.has(clave_s2):
+				continue
+			_seg_vistos[clave_s] = true
+			_seg_calles.append([sa, sb, medio, con_acera])
+		for i in base_pts.size():
+			if i > 0:
+				var desde_p: Vector2 = base_pts[i - 1]
+				var hasta_p: Vector2 = base_pts[i]
+				var tramos := int(ceil(desde_p.distance_to(hasta_p) / 6.0))
+				for k in range(1, tramos):
+					var mp: Vector2 = desde_p.lerp(hasta_p, float(k) / float(tramos))
+					pts.append([mp.x, mp.y])
+			pts.append([base_pts[i].x, base_pts[i].y])
+		var ant_izq := Vector3.ZERO
+		var ant_der := Vector3.ZERO
+		var ant_centro := Vector3.ZERO
+		var ant_p := Vector2.ZERO
+		var recorrido_c := 0.0
+		var ant_borde: Array = []
+		var ant_ai := Vector3.ZERO
+		var ant_ao := Vector3.ZERO
+		var ant_di := Vector3.ZERO
+		var ant_do := Vector3.ZERO
+		var primero := true
+		for i in pts.size():
+			var p := Vector2(float(pts[i][0]), float(pts[i][1]))
+			var dir := Vector2.ZERO
+			if i > 0:
+				dir += p - Vector2(float(pts[i - 1][0]), float(pts[i - 1][1]))
+			if i < pts.size() - 1:
+				dir += Vector2(float(pts[i + 1][0]), float(pts[i + 1][1])) - p
+			if dir.length() < 0.001:
+				continue
+			dir = dir.normalized()
+			var normal2 := Vector2(-dir.y, dir.x)
+			# Cada vértice se apoya en SU terreno (antes toda la sección
+			# iba plana a la altura del centro: en calles con pendiente
+			# lateral un borde flotaba como una losa y el otro quedaba
+			# enterrado). En los puentes el tablero sí es plano: allí se
+			# mantiene la altura del centro en toda la sección.
+			var y_c := _altura(p.x, p.y)
+			var en_puente := y_c > _altura_terreno(p.x, p.y) + 0.05
+			var alt := func(qx: float, qz: float, off: float) -> float:
+				return (y_c if en_puente else _altura(qx, qz)) + off
+			var xz_izq: Vector2 = p + normal2 * medio
+			var xz_der := p - normal2 * medio
+			var izq := Vector3(xz_izq.x, alt.call(xz_izq.x, xz_izq.y, 0.08), xz_izq.y)
+			var der := Vector3(xz_der.x, alt.call(xz_der.x, xz_der.y, 0.08), xz_der.y)
+			var xz_ai: Vector2 = p + normal2 * (medio + 0.05)
+			var xz_ao: Vector2 = p + normal2 * (medio + 1.75)
+			var xz_di := p - normal2 * (medio + 0.05)
+			var xz_do := p - normal2 * (medio + 1.75)
+			var ai := Vector3(xz_ai.x, alt.call(xz_ai.x, xz_ai.y, 0.17), xz_ai.y)
+			var ao := Vector3(xz_ao.x, alt.call(xz_ao.x, xz_ao.y, 0.17), xz_ao.y)
+			var di := Vector3(xz_di.x, alt.call(xz_di.x, xz_di.y, 0.17), xz_di.y)
+			var do2 := Vector3(xz_do.x, alt.call(xz_do.x, xz_do.y, 0.17), xz_do.y)
+			var cen3 := Vector3(p.x, alt.call(p.x, p.y, 0.095), p.y)
+			# Recorte de cruce: si el punto medio del tramo
+			# cae dentro del disco de un cruce, las cintas
+			# (acera, bordillo, líneas, trazos) no se pintan:
+			# ahí manda el parche de asfalto del cruce. Y si
+			# una baranda retrocede (curva cerrada), el quad
+			# se cruza en pajarita: tampoco se pinta.
+			var seg_zona := false
+			var seg_retro := false
+			if not primero:
+				seg_zona = en_zona.call((ant_p + p) * 0.5)
+				seg_retro = (Vector2(ai.x, ai.z) - Vector2(ant_ai.x, ant_ai.z)).dot(dir) < -0.05 or (Vector2(di.x, di.z) - Vector2(ant_di.x, ant_di.z)).dot(dir) < -0.05
+			if not primero:
+				_tri(cv, cn, PackedColorArray(), ant_izq, der, ant_der, true, Color.WHITE)
+				_tri(cv, cn, PackedColorArray(), ant_izq, izq, der, true, Color.WHITE)
+				if con_acera and not seg_zona and not seg_retro:
+					_tri(sv, sn, PackedColorArray(), ant_ai, ao, ant_ao, true, Color.WHITE)
+					_tri(sv, sn, PackedColorArray(), ant_ai, ai, ao, true, Color.WHITE)
+					_tri(sv, sn, PackedColorArray(), ant_di, ant_do, do2, true, Color.WHITE)
+					_tri(sv, sn, PackedColorArray(), ant_di, do2, di, true, Color.WHITE)
+					# El bordillo (Tanda 14): la cara vertical entre
+					# la calzada (+0,08) y la acera (+0,17). Sin ella
+					# la acera era una cinta flotante sin canto.
+					var col_bord := Color(0.52, 0.50, 0.47)
+					_tri(bv, bn, bc, ant_izq, izq, ant_ai, true, col_bord)
+					_tri(bv, bn, bc, izq, ai, ant_ai, true, col_bord)
+					_tri(bv, bn, bc, ant_der, ant_di, der, true, col_bord)
+					_tri(bv, bn, bc, der, ant_di, di, true, col_bord)
+				# Línea central discontinua en las calles anchas
+				# (Tanda 14): trazos de ~5,5 m cada 10 m.
+				if medio >= 3.25 and clase in ["primary", "secondary", "tertiary"]:
+					if not seg_zona and fmod(recorrido_c, 10.0) < 5.5:
+						var n3 := Vector3(normal2.x, 0, normal2.y)
+						_tri(bv, bn, bc, ant_centro + n3 * 0.07, cen3 - n3 * 0.07, ant_centro - n3 * 0.07, true, Color(0.88, 0.88, 0.86))
+						_tri(bv, bn, bc, ant_centro + n3 * 0.07, cen3 + n3 * 0.07, cen3 - n3 * 0.07, true, Color(0.88, 0.88, 0.86))
+					recorrido_c += ant_centro.distance_to(cen3)
+			if medio >= 2.25:
+				var lados_b: Array = []
+				for sgn in [1.0, -1.0]:
+					var xz_go: Vector2 = p + normal2 * sgn * (medio - 0.03)
+					var xz_gi: Vector2 = p + normal2 * sgn * (medio - 0.58)
+					var xz_lo: Vector2 = p + normal2 * sgn * (medio - 0.31)
+					var xz_li: Vector2 = p + normal2 * sgn * (medio - 0.46)
+					var go := Vector3(xz_go.x, alt.call(xz_go.x, xz_go.y, 0.092), xz_go.y)
+					var gi := Vector3(xz_gi.x, alt.call(xz_gi.x, xz_gi.y, 0.092), xz_gi.y)
+					var lo := Vector3(xz_lo.x, alt.call(xz_lo.x, xz_lo.y, 0.106), xz_lo.y)
+					var li := Vector3(xz_li.x, alt.call(xz_li.x, xz_li.y, 0.106), xz_li.y)
+					lados_b.append([go, gi, lo, li])
+				if not primero:
+					for sb in range(2):
+						var pa: Array = ant_borde[sb]
+						var pb: Array = lados_b[sb]
+						if seg_zona or (Vector2(pb[2].x, pb[2].z) - Vector2(pa[2].x, pa[2].z)).dot(dir) < -0.05:
+							continue
+						_tri(bv, bn, bc, pa[0], pb[0], pa[1], true, Color(0.20, 0.20, 0.22))
+						_tri(bv, bn, bc, pb[0], pb[1], pa[1], true, Color(0.20, 0.20, 0.22))
+						_tri(bv, bn, bc, pa[2], pb[2], pa[3], true, Color(0.85, 0.84, 0.78))
+						_tri(bv, bn, bc, pb[2], pb[3], pa[3], true, Color(0.85, 0.84, 0.78))
+				ant_borde = lados_b
+			ant_izq = izq
+			ant_der = der
+			ant_centro = cen3
+			ant_p = p
+			ant_ai = ai
+			ant_ao = ao
+			ant_di = di
+			ant_do = do2
+			primero = false
+	# Parche de cruce (revisión de cruces, 2026-11-24): las
+	# cintas de acera y bordillo de cada calle se dibujan
+	# rectas a través de los cruces, y pintaban bandas grises
+	# sobre el asfalto de la calle que cruza (capturas de Jon:
+	# «las franjas grises no tienen sentido»). En cada cruce
+	# se funde un disco de asfalto a +0,185 — sobre la acera
+	# (+0,17) — que tapa todo lo que cruce por dentro del
+	# cruce: aceras, bordillos, líneas y trazos centrales.
+	# Los pasos de cebra arrancan fuera del disco.
 	# Parche de asfalto por cruce agrupado: tapa las
 	# cintas de acera y bordillo que atraviesan el cruce
 	# (a +0,185, sobre la acera) y las líneas que lo cruzan.
 	var npar := 0
 	for cruce in cruces:
-		if npar >= 40:
+		if npar >= 400:
 			break
-		if bool(cruce["anillo"]) or int(cruce["n"]) < 3:
+		if not bool(cruce.get("tapado", false)):
 			continue
-		var radio_p := float(cruce["dist"])
-		var clase_ok := false
-		for br in cruce["brazos"]:
-			radio_p = maxf(radio_p, float(cruce["dist"]) + float(br["ancho"]) * 0.5)
-			if ["primary", "secondary", "tertiary", "residential", "unclassified", "living_street"].has(String(br["clase"])):
-				clase_ok = true
-		if not clase_ok or radio_p < 2.0:
-			continue
+		var radio_p := float(cruce["radio"])
 		var pos_p: Vector2 = cruce["centro"]
-		if _altura(pos_p.x, pos_p.y) > _altura_terreno(pos_p.x, pos_p.y) + 0.05:
-			continue  # sobre un puente no: el disco flotaría
-		radio_p += 0.55
 		var cen_p := Vector3(pos_p.x, _altura(pos_p.x, pos_p.y) + 0.185, pos_p.y)
 		var rim: Array = []
 		for s in 12:
@@ -9424,8 +9485,17 @@ func _crear_lineas_bus() -> void:
 	# la propia avenida: -101,199.5 y -161,406), pasa la
 	# rotonda del Labrador y sale por Gran Via (-365,422
 	# y -813,261) hacia Yagüe.
+	# Cuarta pasada (Jon, 2026-11-24, sobre la captura del
+	# mapa en el casco antiguo: «todavia no has arreglado
+	# la linea roja, quiero que sea mas recta en esa
+	# zona»): a la L1 le quedaba un diente rectangular en
+	# el centro: su ancla (0,120) caia en la callejuela de
+	# una plazoleta al sur de la calle que la linea sigue,
+	# y el bus bajaba a tocarla y volvia a subir. El ancla
+	# va ahora sobre la propia calle (28,101): el tramo
+	# Sagasta-Redonda queda recto (4411 -> 4393 m).
 	var defs: Array = [
-		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(1920.5, 675.5), Vector2(1482.5, 542), Vector2(700, 280), Vector2(0, 120), Vector2(-798, -6), Vector2(-1522, -301.5), Vector2(-1786, -697.5)]},
+		{"ext": "Varea — El Campillo", "c": Color(0.92, 0.25, 0.22), "anclas": [Vector2(1920.5, 675.5), Vector2(1482.5, 542), Vector2(700, 280), Vector2(28, 101), Vector2(-798, -6), Vector2(-1522, -301.5), Vector2(-1786, -697.5)]},
 		{"ext": "Las Norias — La Grajera", "c": Color(0.20, 0.45, 1.00), "anclas": [Vector2(-148, -965), Vector2(-160, -582.5), Vector2(-60, 60), Vector2(-120, 650), Vector2(-280, 1250), Vector2(-435, 1471)]},
 		{"ext": "Valdegastea — Universidad", "c": Color(0.15, 0.65, 0.30), "anclas": [Vector2(-1983, 544), Vector2(-1550, 520), Vector2(-750, 430), Vector2(50, 330), Vector2(868, 203.5), Vector2(1650, 90), Vector2(2009, 421.5)]},
 		{"ext": "Yagüe — Madre de Dios", "c": Color(1.00, 0.55, 0.10), "anclas": [Vector2(-1880.5, 1219.5), Vector2(-1150, 820), Vector2(-813, 261), Vector2(-365, 422), Vector2(-161, 406), Vector2(-101, 199.5), Vector2(250, 180), Vector2(950, -220), Vector2(2146, -565)]},
