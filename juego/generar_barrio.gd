@@ -6666,6 +6666,15 @@ func _physics_process(delta: float) -> void:
 	if _modo_libre and not _auto:
 		_actualizar_camara(delta)
 
+func _dir_relativa(dir: Vector2) -> Vector2:
+	# Convierte una dirección de pantalla (x = derecha,
+	# y = abajo) en dirección del mundo relativa a donde
+	# mira el personaje: la cámara va siempre tras él, así
+	# que «arriba» es su frente y «derecha», su derecha.
+	var fte := Vector2(sin(_dir_jugador), cos(_dir_jugador))
+	var dch := Vector2(-fte.y, fte.x)
+	return dch * dir.x + fte * (-dir.y)
+
 func _andar(delta: float) -> void:
 	if _arrodillado:
 		# De rodillas en el reclinatorio de la capilla:
@@ -6728,9 +6737,20 @@ func _andar(delta: float) -> void:
 			dir = _toque_andar
 		_corriendo = Input.is_key_pressed(KEY_SPACE) or _toque_correr
 		if dir.length() > 0.01:
-			# El joystick y el stick apuntan: andas hacia donde empujas.
-			vel = Vector3(dir.x, 0, dir.y).normalized() * (10.2 if _corriendo else 6.0)
-			_dir_jugador = atan2(vel.x, vel.z)
+			# El joystick, el mando y la cruceta mandan
+			# RELATIVO a donde mira el personaje (la cámara
+			# va siempre tras él): arriba es su frente, la
+			# derecha es su derecha, y vale cualquier ángulo
+			# entre medias. Antes era absoluto (arriba era
+			# siempre el norte del mundo) y Jon lo notó:
+			# «los movimientos del peatón son absolutos».
+			# La fuerza del empuje manda en el paso:
+			# empujar un poco es andar despacio, para
+			# ajustar; a fondo, el paso normal o la carrera.
+			var mundo := _dir_relativa(dir)
+			if mundo.length() > 0.05:
+				vel = Vector3(mundo.x, 0, mundo.y).normalized() * (10.2 if _corriendo else 6.0) * clampf(mundo.length(), 0.0, 1.0)
+				_dir_jugador = atan2(vel.x, vel.z)
 		else:
 			# Teclado RELATIVO, como al conducir: izquierda y derecha
 			# GIRAN al personaje; arriba anda hacia donde mira. Abajo
@@ -6861,8 +6881,11 @@ func _nadar(delta: float) -> void:
 		dir = _toque_andar
 	var deseo := Vector2.ZERO
 	if dir.length() > 0.01:
-		deseo = dir.normalized()
-		_dir_jugador = atan2(deseo.x, deseo.y)
+		# Relativo a donde mira, como al andar (Tanda 36).
+		var mundo_n := _dir_relativa(dir)
+		if mundo_n.length() > 0.05:
+			deseo = mundo_n.normalized()
+			_dir_jugador = atan2(deseo.x, deseo.y)
 	else:
 		var giro := float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT))
 		var adelante := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
@@ -17681,6 +17704,15 @@ func _capturar_si_toca() -> void:
 		# Tanda 35: dos dedos a la vez (gas + volante en el
 		# coche; cruceta en diagonal a pie): lo que la
 		# emulación de ratón de los botones no sabía hacer.
+		# Tanda 36: el movimiento a pie es relativo a
+		# donde mira el personaje, no absoluto del mundo:
+		# mirando al este, «arriba» anda al este y
+		# «derecha» al sur; y un empuje flojo conserva su
+		# fuerza (analógico), no se normaliza.
+		var dir0 := _dir_jugador
+		_dir_jugador = PI / 2.0
+		var rel_ok: bool = _dir_relativa(Vector2(0, -1)).distance_to(Vector2(1, 0)) < 0.01 and _dir_relativa(Vector2(1, 0)).distance_to(Vector2(0, 1)) < 0.01 and absf(_dir_relativa(Vector2(0.3, 0)).length() - 0.3) < 0.01
+		_dir_jugador = dir0
 		var toque_ok := true
 		_en_coche = true
 		_refrescar_tactil()
@@ -17744,7 +17776,7 @@ func _capturar_si_toca() -> void:
 			t8.pressed = false
 			_input(t8)
 			toque_ok = toque_ok and diag_ok and _toque_andar == Vector2.ZERO
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok)
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok and rel_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok, " rel=", rel_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
