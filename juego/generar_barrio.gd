@@ -4165,10 +4165,10 @@ func _camara_y_luz() -> void:
 	# Plan de rendimiento (cifras del móvil de Jon, 2026-11-25:
 	# 4 fps con solo 10,2 ms de proceso y 2.580 objetos: el
 	# cuello es el dibujo, no la lógica). En pantallas
-	# táctiles la cámara corta a 1.000 m en vez de a los
+	# táctiles la cámara corta a 900 m en vez de a los
 	# 4.000 por defecto: lo que no se ve no se dibuja.
 	if DisplayServer.is_touchscreen_available():
-		_cam.far = 1000.0
+		_cam.far = 900.0
 	var sol := DirectionalLight3D.new()
 	sol.rotation_degrees = Vector3(-50, -118, 0)
 	sol.light_color = Color(1.0, 0.97, 0.92)
@@ -4201,17 +4201,17 @@ func _camara_y_luz() -> void:
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.80, 0.86, 0.92)
 	# En el móvil la niebla es más densa, para que el corte de
-	# la cámara a 1.000 m se disuelva en la bruma y no se vea
+	# la cámara a 900 m se disuelva en la bruma y no se vea
 	# el borde del mundo.
-	# Tanda 34: solo en el móvil, el 3D se renderiza al
-	# 70 % de resolución y se reescala; la interfaz va
+	# Tanda 34/37: solo en el móvil, el 3D se renderiza
+	# al 60 % de resolución y se reescala; la interfaz va
 	# aparte y queda intacta, el mundo se ve un pelín más
-	# suave. Comprobado en el banco antes de aplicarlo:
-	# con los mismos triángulos, ~10 % menos de tiempo
-	# por frame en las tres zonas.
+	# suave. Al 70 % el banco midió ~10 % menos de tiempo
+	# por frame con los mismos triángulos; al 60 % se
+	# aprieta un poco más rumbo a los 30 fps (Jon).
 	if DisplayServer.is_touchscreen_available():
 		RenderingServer.viewport_set_scaling_3d_mode(get_tree().root.get_viewport_rid(), RenderingServer.VIEWPORT_SCALING_3D_MODE_BILINEAR)
-		RenderingServer.viewport_set_scaling_3d_scale(get_tree().root.get_viewport_rid(), 0.7)
+		RenderingServer.viewport_set_scaling_3d_scale(get_tree().root.get_viewport_rid(), 0.6)
 	env.fog_density = 0.0013 if DisplayServer.is_touchscreen_available() else 0.00032
 	entorno.environment = env
 	add_child(entorno)
@@ -4964,6 +4964,8 @@ var _tiles := {}
 var _cola_tiles: Array = []
 var _tile_timer := 0.0
 var _t_mini := 0.0
+var _t_rot := 0.0
+var _paso_fis := 0
 var _pois_mapa: Array = []
 var _rng := RandomNumberGenerator.new()
 var _objetivo_texto := "Sin encargo · Pulsa T para ver encargos"
@@ -6519,6 +6521,18 @@ func _physics_process(delta: float) -> void:
 	_tiempo += delta
 	if (_mapa_abierto or _panel_abierto or _ayuda_abierta or _panel_coches_abierto or _panel_esp_abierto or _dlg_abierto or _panel_carr_abierto) and not _auto:
 		return
+	_paso_fis += 1
+	# Tanda 37 (rumbo a 30 fps en el móvil de Jon): los
+	# sistemas de ambiente (tenderos, misa, especiales,
+	# encuentros y palomas) van a mitad de pasos con el
+	# delta doblado, solo en el móvil. Su mundo cambia
+	# despacio y no necesita todos los pasos; el jugador,
+	# el tráfico y los peatones van siempre a paso pleno.
+	var amb_va := true
+	var amb_d := delta
+	if _movil:
+		amb_va = _paso_fis % 2 == 0
+		amb_d = delta * 2.0
 	if _en_bus:
 		_conducir_bus(delta)
 	elif _en_coche or (_auto and _fase_auto == 1):
@@ -6542,8 +6556,9 @@ func _physics_process(delta: float) -> void:
 			if _agua_profunda(Vector2(_jugador.position.x, _jugador.position.z)):
 				_nadando = true
 	_comprobar_salida_interior()
-	_actualizar_tenderos(delta)
-	_actualizar_misa(delta)
+	if amb_va:
+		_actualizar_tenderos(amb_d)
+		_actualizar_misa(amb_d)
 	# Rastro del recorrido (para el mapa) y peatones. Dentro de un
 	# interior no se anota: las salas viven lejos de la ciudad y el
 	# mapa dibujaba una recta imposible hasta ellas.
@@ -6554,17 +6569,19 @@ func _physics_process(delta: float) -> void:
 		if _rastro.size() > 500:
 			_rastro.remove_at(0)
 	_mover_peatones(delta)
-	_mover_palomas(delta)
+	if amb_va:
+		_mover_palomas(amb_d)
 	_mover_trafico(delta)
 	_mover_buses(delta)
 	_tic_vis += delta
 	if _tic_vis > 0.25:
 		_tic_vis = 0.0
 		_actualizar_visibilidad()
-	_actualizar_especiales(delta)
+	if amb_va:
+		_actualizar_especiales(amb_d)
+		_actualizar_encuentros(amb_d)
+		_mover_encuentro(amb_d)
 	_actualizar_caras()
-	_actualizar_encuentros(delta)
-	_mover_encuentro(delta)
 	_mover_historia(delta)
 	_actualizar_carrera(delta)
 	# ¿Llegada al objetivo del encargo?
@@ -6616,7 +6633,7 @@ func _physics_process(delta: float) -> void:
 			_actualizar_hud_dinero()
 	if _modo_libre and not _auto and _minimapa != null and _jugador != null:
 		_t_mini += delta
-		if _t_mini >= 0.15:
+		if _t_mini >= (0.3 if _movil else 0.15):
 			_t_mini = 0.0
 			_minimapa.call("actualizar", _datos_minimapa())
 	if _stats_on and _lbl_stats != null:
@@ -6624,6 +6641,15 @@ func _physics_process(delta: float) -> void:
 		if _t_stats >= 0.25:
 			_t_stats = 0.0
 			_actualizar_stats()
+	# Los rótulos de proximidad se refrescan con su propio
+	# reloj: escanear los mil y pico carteles de la ciudad
+	# es de lo más caro del paso, y en el móvil basta con
+	# medio segundo largo (Tanda 37).
+	if _modo_libre and not _auto:
+		_t_rot += delta
+		if _t_rot >= (0.6 if _movil else 0.3):
+			_t_rot = 0.0
+			_refrescar_rotulos()
 	_t_vis += delta
 	if _t_vis >= 0.3:
 		_t_vis = 0.0
@@ -6638,7 +6664,6 @@ func _physics_process(delta: float) -> void:
 			_et_calle.text = nombre
 			_actualizar_hud()
 			_actualizar_ambientes()
-			_refrescar_rotulos()
 			if _en_interior != "" and not _dlg_abierto and _tiempo > _aviso_hasta:
 				var acc_h := _accion_interior_cercana()
 				if acc_h != "":
@@ -17713,6 +17738,14 @@ func _capturar_si_toca() -> void:
 		_dir_jugador = PI / 2.0
 		var rel_ok: bool = _dir_relativa(Vector2(0, -1)).distance_to(Vector2(1, 0)) < 0.01 and _dir_relativa(Vector2(1, 0)).distance_to(Vector2(0, 1)) < 0.01 and absf(_dir_relativa(Vector2(0.3, 0)).length() - 0.3) < 0.01
 		_dir_jugador = dir0
+		# Tanda 37: el contador de pasos de física avanza
+		# y los sistemas de ambiente se turnan en el móvil.
+		_movil = true
+		var pf0 := _paso_fis
+		_physics_process(0.016)
+		_physics_process(0.016)
+		var amb_ok: bool = _paso_fis == pf0 + 2
+		_movil = false
 		var toque_ok := true
 		_en_coche = true
 		_refrescar_tactil()
@@ -17776,7 +17809,7 @@ func _capturar_si_toca() -> void:
 			t8.pressed = false
 			_input(t8)
 			toque_ok = toque_ok and diag_ok and _toque_andar == Vector2.ZERO
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok and rel_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok, " rel=", rel_ok)
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok and rel_ok and amb_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok, " rel=", rel_ok, " amb=", amb_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
