@@ -4195,6 +4195,15 @@ func _camara_y_luz() -> void:
 	# En el móvil la niebla es más densa, para que el corte de
 	# la cámara a 1.000 m se disuelva en la bruma y no se vea
 	# el borde del mundo.
+	# Tanda 34: solo en el móvil, el 3D se renderiza al
+	# 70 % de resolución y se reescala; la interfaz va
+	# aparte y queda intacta, el mundo se ve un pelín más
+	# suave. Comprobado en el banco antes de aplicarlo:
+	# con los mismos triángulos, ~10 % menos de tiempo
+	# por frame en las tres zonas.
+	if DisplayServer.is_touchscreen_available():
+		RenderingServer.viewport_set_scaling_3d_mode(get_tree().root.get_viewport_rid(), RenderingServer.VIEWPORT_SCALING_3D_MODE_BILINEAR)
+		RenderingServer.viewport_set_scaling_3d_scale(get_tree().root.get_viewport_rid(), 0.7)
 	env.fog_density = 0.0013 if DisplayServer.is_touchscreen_available() else 0.00032
 	entorno.environment = env
 	add_child(entorno)
