@@ -107,6 +107,7 @@ var _stats_on := false
 var _t_stats := 0.0
 var _t_vis := 0.0
 var _movil := false
+var _es_web := OS.has_feature("web")
 var _btn_izq: Button = null
 var _btn_der: Button = null
 var _capa_pie: Control = null
@@ -9871,27 +9872,36 @@ func _refrescar_visibilidad_personas() -> void:
 	# viviendo); al acercarse reaparecen. Los personajes de
 	# la historia NO entran aquí: su visible es estado del
 	# sistema de escoltas.
+	# Tanda 38: en la WEB el radio baja a 120 m. El
+	# navegador (WebGL) deja de dibujar el mundo entero
+	# cuando se le piden demasiados objetos a la vez —
+	# el «limbo» que Jon se encuentra una y otra vez en
+	# su navegador — y en el centro hay ~130 personas a
+	# 6 mallas dentro de los 180 m. A 120 m una persona
+	# es diminuta: el recorte apenas se nota y libera
+	# cientos de objetos por frame.
+	var r2max := 14400.0 if _es_web else 32400.0
 	var ancla: Vector3 = _coche.position if _en_coche else _jugador.position
 	for p in _peatones:
 		var r: Node3D = p.get("raiz")
 		if r != null and is_instance_valid(r):
-			r.visible = ancla.distance_squared_to(r.position) < 32400.0
+			r.visible = ancla.distance_squared_to(r.position) < r2max
 	for e in _estaticos:
 		var r2: Node3D = e.get("raiz")
 		if r2 != null and is_instance_valid(r2):
-			r2.visible = ancla.distance_squared_to(r2.position) < 32400.0
+			r2.visible = ancla.distance_squared_to(r2.position) < r2max
 	for s in _skaters:
 		var r3: Node3D = s.get("raiz")
 		if r3 != null and is_instance_valid(r3):
-			r3.visible = ancla.distance_squared_to(r3.position) < 32400.0
+			r3.visible = ancla.distance_squared_to(r3.position) < r2max
 	for pe in _perros:
 		var r4: Node3D = pe.get("raiz")
 		if r4 != null and is_instance_valid(r4):
-			r4.visible = ancla.distance_squared_to(r4.position) < 32400.0
+			r4.visible = ancla.distance_squared_to(r4.position) < r2max
 	for pa in _pajaros:
 		var r5: Node3D = pa.get("raiz")
 		if r5 != null and is_instance_valid(r5):
-			r5.visible = ancla.distance_squared_to(r5.position) < 32400.0
+			r5.visible = ancla.distance_squared_to(r5.position) < r2max
 
 func _refrescar_visibilidad_tiles() -> void:
 	# Plan de rendimiento (móvil de Jon: realme 14T, Dimensity
@@ -9902,7 +9912,9 @@ func _refrescar_visibilidad_tiles() -> void:
 	# triángulos de fachadas y su malla se procesa entera
 	# aunque solo se vea una esquina: las cuatro baldosas de
 	# las esquinas del 3x3 son la mitad larga de ese peso.
-	if not _movil:
+	# Tanda 38: también en la WEB, por el límite de objetos
+	# del navegador (ver _refrescar_visibilidad_personas).
+	if not _movil and not _es_web:
 		return
 	var ancla: Vector3 = _coche.position if _en_coche else _jugador.position
 	for clave in _tiles.keys():
@@ -17726,6 +17738,31 @@ func _capturar_si_toca() -> void:
 			var nodo_r: Node3D = _tiles[clave_r].get("nodo")
 			if nodo_r != null and is_instance_valid(nodo_r):
 				nodo_r.visible = true
+		# Tanda 38: en modo web, una persona a 150 m no se
+		# dibuja (radio 120 m) y la pasada de baldosas corre
+		# sin _movil, apagando las esquinas lejanas.
+		var web_ok := true
+		_es_web = true
+		if not _estaticos.is_empty():
+			var rw: Node3D = _estaticos[0].get("raiz")
+			if rw != null and is_instance_valid(rw):
+				var pos_jw := _jugador.position
+				_jugador.position = rw.position + Vector3(150.0, 0.0, 0.0)
+				_refrescar_visibilidad_personas()
+				web_ok = web_ok and not rw.visible
+				_jugador.position = pos_jw
+				_refrescar_visibilidad_personas()
+		_refrescar_visibilidad_tiles()
+		var ocultas := 0
+		for clave_w in _tiles.keys():
+			var nodo_w: Node3D = _tiles[clave_w].get("nodo")
+			if nodo_w != null and is_instance_valid(nodo_w):
+				if not nodo_w.visible:
+					ocultas += 1
+				nodo_w.visible = true
+		web_ok = web_ok and (ocultas >= 1 or _tiles.size() < 9)
+		_es_web = false
+		_refrescar_visibilidad_personas()
 		# Tanda 35: dos dedos a la vez (gas + volante en el
 		# coche; cruceta en diagonal a pie): lo que la
 		# emulación de ratón de los botones no sabía hacer.
@@ -17809,7 +17846,7 @@ func _capturar_si_toca() -> void:
 			t8.pressed = false
 			_input(t8)
 			toque_ok = toque_ok and diag_ok and _toque_andar == Vector2.ZERO
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok and rel_ok and amb_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok, " rel=", rel_ok, " amb=", amb_ok)
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok and rel_ok and amb_ok and web_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok, " rel=", rel_ok, " amb=", amb_ok, " web=", web_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
