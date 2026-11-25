@@ -112,6 +112,14 @@ var _btn_der: Button = null
 var _capa_pie: Control = null
 var _pad_pie: Control = null
 var _btn_arriba: Button = null
+var _btn_abajo: Button = null
+var _btn_izqp: Button = null
+var _btn_derp: Button = null
+var _btn_correr: Button = null
+# Dedos que están sobre los controles de mantener:
+# índice de toque -> nombre del control ("gas", "der",
+# "u"...). El ratón (real o emulado) usa el índice 999.
+var _dedos := {}
 var _toque_andar := Vector2.ZERO
 var _ta_u := false
 var _ta_d := false
@@ -6158,12 +6166,29 @@ func _marcador(pos: Vector3, color: Color, atravesar := false, radio := 0.45, te
 	return inst
 
 func _input(event: InputEvent) -> void:
-	# Joystick táctil flotante (mitad izquierda baja de la pantalla)
+	# Controles de mantener (volante, pedales, cruceta y
+	# CORRER): se leen dedo a dedo de los eventos de toque,
+	# sin pasar por los botones. La emulación de ratón con
+	# la que Android sirve a los botones solo ve UN dedo:
+	# con el gas aguantado con un pulgar, el volante no
+	# recibía el otro (Jon: «los de derecha e izquierda no
+	# hacen nada») y a pie el segundo dedo de la cruceta
+	# hacía cosas raras. Aquí cada dedo manda en su control
+	# y puede resbalar de uno a otro.
 	if event is InputEventScreenTouch:
 		if _capa_tactil != null:
 			_capa_tactil.visible = true
+		if event.pressed:
+			if not _toque_bloqueado():
+				var cid := _control_en(event.position)
+				if cid != "":
+					_dedos[event.index] = cid
+					_aplicar_dedos()
+		elif _dedos.has(event.index):
+			_dedos.erase(event.index)
+			_aplicar_dedos()
 		var en_pad := _pad_pie != null and _capa_pie != null and _capa_pie.visible and _pad_pie.get_global_rect().has_point(event.position)
-		if event.pressed and _joy_id == -1 and not _en_coche and not en_pad and not _panel_abierto and not _mapa_abierto and not _ayuda_abierta and not _panel_coches_abierto:
+		if event.pressed and _joy_id == -1 and not _dedos.has(event.index) and not _en_coche and not en_pad and not _panel_abierto and not _mapa_abierto and not _ayuda_abierta and not _panel_coches_abierto:
 			var vp := get_viewport().get_visible_rect().size
 			if event.position.x < vp.x * 0.45 and event.position.y > vp.y * 0.4:
 				_joy_id = event.index
@@ -6174,12 +6199,40 @@ func _input(event: InputEvent) -> void:
 			_joy_id = -1
 			_joy_valor = Vector2.ZERO
 			_colocar_joy()
-	elif event is InputEventScreenDrag and event.index == _joy_id:
-		var d: Vector2 = event.position - _joy_centro
-		if d.length() > 55.0:
-			d = d.normalized() * 55.0
-		_joy_valor = d / 55.0
-		_colocar_joy()
+	elif event is InputEventScreenDrag:
+		if _dedos.has(event.index):
+			var cid2 := _control_en(event.position)
+			if cid2 == "":
+				_dedos.erase(event.index)
+			else:
+				_dedos[event.index] = cid2
+			_aplicar_dedos()
+		elif event.index == _joy_id:
+			var d: Vector2 = event.position - _joy_centro
+			if d.length() > 55.0:
+				d = d.normalized() * 55.0
+			_joy_valor = d / 55.0
+			_colocar_joy()
+	# El ratón (real o emulado) cuenta como un dedo más,
+	# con el índice 999: así los controles también se
+	# pueden aguantar con el ratón en un navegador.
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			if not _toque_bloqueado():
+				var cidm := _control_en(event.position)
+				if cidm != "":
+					_dedos[999] = cidm
+					_aplicar_dedos()
+		elif _dedos.has(999):
+			_dedos.erase(999)
+			_aplicar_dedos()
+	elif event is InputEventMouseMotion and _dedos.has(999) and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		var cidm2 := _control_en(event.position)
+		if cidm2 == "":
+			_dedos.erase(999)
+		else:
+			_dedos[999] = cidm2
+		_aplicar_dedos()
 	if event is InputEventJoypadButton and event.pressed and not _auto and _jugador != null:
 		if _ayuda_abierta:
 			_cerrar_ayuda()
@@ -9732,6 +9785,7 @@ func _boton_pad(texto: String, pos: Vector2) -> Button:
 	b.text = texto
 	b.position = pos
 	b.size = Vector2(88, 88)
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_theme_font_size_override("font_size", 34)
 	b.add_theme_color_override("font_color", Color(1, 1, 1))
 	b.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 44))
@@ -9815,6 +9869,67 @@ func _refrescar_visibilidad_tiles() -> void:
 		var dz: float = cz - ancla.z
 		nodo.visible = dx * dx + dz * dz < 562500.0
 
+func _toque_bloqueado() -> bool:
+	# Con un panel, el mapa, la ayuda o un diálogo
+	# abiertos, los toques son para ellos, no para los
+	# controles de conducir o andar que quedan debajo.
+	return _panel_abierto or _mapa_abierto or _ayuda_abierta or _panel_coches_abierto or _dlg_abierto
+
+func _control_en(pos: Vector2) -> String:
+	# Qué control de mantener hay bajo ese punto de la
+	# pantalla ("" si ninguno), según la capa visible.
+	if _capa_conducir != null and _capa_conducir.visible:
+		if _btn_izq != null and _btn_izq.get_global_rect().has_point(pos):
+			return "izq"
+		if _btn_der != null and _btn_der.get_global_rect().has_point(pos):
+			return "der"
+		if _btn_freno != null and _btn_freno.get_global_rect().has_point(pos):
+			return "freno"
+		if _btn_gas != null and _btn_gas.get_global_rect().has_point(pos):
+			return "gas"
+	elif _capa_pie != null and _capa_pie.visible:
+		if _btn_arriba != null and _btn_arriba.get_global_rect().has_point(pos):
+			return "u"
+		if _btn_abajo != null and _btn_abajo.get_global_rect().has_point(pos):
+			return "d"
+		if _btn_izqp != null and _btn_izqp.get_global_rect().has_point(pos):
+			return "l"
+		if _btn_derp != null and _btn_derp.get_global_rect().has_point(pos):
+			return "r"
+		if _btn_correr != null and _btn_correr.get_global_rect().has_point(pos):
+			return "correr"
+	return ""
+
+func _marcar_btn(b: Button, activo: bool) -> void:
+	if b != null:
+		b.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if activo else Color(1, 1, 1))
+
+func _aplicar_dedos() -> void:
+	# Recalcula todas las banderas de toque desde los
+	# dedos que están ahora mismo sobre los controles.
+	# Es el ÚNICO sitio que las escribe por toque.
+	var s := {}
+	for k in _dedos.values():
+		s[String(k)] = true
+	_toque_giro = float(s.has("der")) - float(s.has("izq"))
+	_toque_gas = s.has("gas")
+	_toque_freno = s.has("freno")
+	_ta_u = s.has("u")
+	_ta_d = s.has("d")
+	_ta_l = s.has("l")
+	_ta_r = s.has("r")
+	_actualizar_toque_andar()
+	_toque_correr = s.has("correr")
+	_marcar_btn(_btn_izq, s.has("izq"))
+	_marcar_btn(_btn_der, s.has("der"))
+	_marcar_btn(_btn_freno, s.has("freno"))
+	_marcar_btn(_btn_gas, s.has("gas"))
+	_marcar_btn(_btn_arriba, s.has("u"))
+	_marcar_btn(_btn_abajo, s.has("d"))
+	_marcar_btn(_btn_izqp, s.has("l"))
+	_marcar_btn(_btn_derp, s.has("r"))
+	_marcar_btn(_btn_correr, s.has("correr"))
+
 func _crear_tactil() -> void:
 	_capa_tactil = CanvasLayer.new()
 	_capa_tactil.layer = 3
@@ -9864,8 +9979,7 @@ func _crear_tactil() -> void:
 	b_izq.custom_minimum_size = Vector2(64, 0)
 	b_izq.add_theme_font_size_override("font_size", 38)
 	b_izq.add_theme_color_override("font_color", Color(1, 1, 1))
-	b_izq.button_down.connect(func() -> void: _toque_giro = -1.0)
-	b_izq.button_up.connect(func() -> void: if _toque_giro < 0.0: _toque_giro = 0.0)
+	b_izq.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(b_izq)
 	var ic_vol := TextureRect.new()
 	ic_vol.texture = _icono_volante()
@@ -9882,8 +9996,7 @@ func _crear_tactil() -> void:
 	b_der.custom_minimum_size = Vector2(64, 0)
 	b_der.add_theme_font_size_override("font_size", 38)
 	b_der.add_theme_color_override("font_color", Color(1, 1, 1))
-	b_der.button_down.connect(func() -> void: _toque_giro = 1.0)
-	b_der.button_up.connect(func() -> void: if _toque_giro > 0.0: _toque_giro = 0.0)
+	b_der.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(b_der)
 	# Pedales en una sola barra, con el mismo estilo que la
 	# del volante (antes eran dos botones sueltos que se
@@ -9910,8 +10023,7 @@ func _crear_tactil() -> void:
 	freno.custom_minimum_size = Vector2(108, 0)
 	freno.add_theme_font_size_override("font_size", 26)
 	freno.add_theme_color_override("font_color", Color(1, 1, 1))
-	freno.button_down.connect(func() -> void: _toque_freno = true)
-	freno.button_up.connect(func() -> void: _toque_freno = false)
+	freno.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb2.add_child(freno)
 	var gas := Button.new()
 	_btn_gas = gas
@@ -9920,8 +10032,7 @@ func _crear_tactil() -> void:
 	gas.custom_minimum_size = Vector2(150, 0)
 	gas.add_theme_font_size_override("font_size", 26)
 	gas.add_theme_color_override("font_color", Color(1, 1, 1))
-	gas.button_down.connect(func() -> void: _toque_gas = true)
-	gas.button_up.connect(func() -> void: _toque_gas = false)
+	gas.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb2.add_child(gas)
 	# Cruceta del peatón (solo visible a pie): botones para
 	# andar y girar sin depender del joystick flotante, como
@@ -9940,17 +10051,9 @@ func _crear_tactil() -> void:
 	_pad_pie.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_capa_pie.add_child(_pad_pie)
 	_btn_arriba = _boton_pad("▲", Vector2(94, 0))
-	_btn_arriba.button_down.connect(func() -> void: _ta_u = true; _actualizar_toque_andar())
-	_btn_arriba.button_up.connect(func() -> void: _ta_u = false; _actualizar_toque_andar())
-	var b_abajo := _boton_pad("▼", Vector2(94, 188))
-	b_abajo.button_down.connect(func() -> void: _ta_d = true; _actualizar_toque_andar())
-	b_abajo.button_up.connect(func() -> void: _ta_d = false; _actualizar_toque_andar())
-	var b_izqp := _boton_pad("◀", Vector2(0, 94))
-	b_izqp.button_down.connect(func() -> void: _ta_l = true; _actualizar_toque_andar())
-	b_izqp.button_up.connect(func() -> void: _ta_l = false; _actualizar_toque_andar())
-	var b_derp := _boton_pad("▶", Vector2(188, 94))
-	b_derp.button_down.connect(func() -> void: _ta_r = true; _actualizar_toque_andar())
-	b_derp.button_up.connect(func() -> void: _ta_r = false; _actualizar_toque_andar())
+	_btn_abajo = _boton_pad("▼", Vector2(94, 188))
+	_btn_izqp = _boton_pad("◀", Vector2(0, 94))
+	_btn_derp = _boton_pad("▶", Vector2(188, 94))
 	var correr := Button.new()
 	correr.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	correr.offset_left = -146
@@ -9963,8 +10066,8 @@ func _crear_tactil() -> void:
 	correr.add_theme_stylebox_override("normal", _estilo_caja(Color(0.22, 0.23, 0.27, 0.55), 50))
 	correr.add_theme_stylebox_override("pressed", _estilo_caja(Color(0.45, 0.47, 0.52, 0.75), 50))
 	correr.add_theme_stylebox_override("focus", _estilo_caja(Color(0, 0, 0, 0), 50))
-	correr.button_down.connect(func() -> void: _toque_correr = true)
-	correr.button_up.connect(func() -> void: _toque_correr = false)
+	correr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_btn_correr = correr
 	_capa_pie.add_child(correr)
 	add_child(_capa_tactil)
 	_capa_tactil.visible = DisplayServer.is_touchscreen_available()
@@ -17478,12 +17581,25 @@ func _capturar_si_toca() -> void:
 		# (el velocímetro termina por encima de donde
 		# empieza la barra, y los dos botones caben en ella).
 		var pedales_ok: bool = _barra_pedales != null and _pill_vel != null and _pill_vel.offset_bottom <= _barra_pedales.offset_top and _btn_freno.custom_minimum_size.x + _btn_gas.custom_minimum_size.x + 6.0 <= (_barra_pedales.offset_right - _barra_pedales.offset_left) - 20.0
+		# El gas se comprueba por el camino real: un toque
+		# sobre el pedal, metido por _input (Tanda 35).
 		var gas_ok := false
 		if _btn_gas != null:
-			_btn_gas.button_down.emit()
-			gas_ok = _toque_gas
-			_btn_gas.button_up.emit()
-			gas_ok = gas_ok and not _toque_gas
+			await get_tree().process_frame
+			var r_gas0: Rect2 = _btn_gas.get_global_rect()
+			if r_gas0.size.x > 0.0:
+				var evg := InputEventScreenTouch.new()
+				evg.index = 7
+				evg.position = r_gas0.get_center()
+				evg.pressed = true
+				_input(evg)
+				gas_ok = _toque_gas
+				var evg2 := InputEventScreenTouch.new()
+				evg2.index = 7
+				evg2.position = r_gas0.get_center()
+				evg2.pressed = false
+				_input(evg2)
+				gas_ok = gas_ok and not _toque_gas
 		_en_coche = false
 		_refrescar_tactil()
 		# Cruceta del peatón: visible a pie, oculta en el
@@ -17491,10 +17607,21 @@ func _capturar_si_toca() -> void:
 		var pie_btn_ok: bool = _capa_pie != null and _capa_pie.visible
 		var andar_ok := false
 		if _btn_arriba != null:
-			_btn_arriba.button_down.emit()
-			andar_ok = _toque_andar == Vector2(0, -1)
-			_btn_arriba.button_up.emit()
-			andar_ok = andar_ok and _toque_andar == Vector2.ZERO
+			await get_tree().process_frame
+			var r_arr0: Rect2 = _btn_arriba.get_global_rect()
+			if r_arr0.size.x > 0.0:
+				var eva := InputEventScreenTouch.new()
+				eva.index = 8
+				eva.position = r_arr0.get_center()
+				eva.pressed = true
+				_input(eva)
+				andar_ok = _toque_andar == Vector2(0, -1)
+				var eva2 := InputEventScreenTouch.new()
+				eva2.index = 8
+				eva2.position = r_arr0.get_center()
+				eva2.pressed = false
+				_input(eva2)
+				andar_ok = andar_ok and _toque_andar == Vector2.ZERO
 		# En la bici el pedal de gas se llama PEDALEAR y la
 		# cruceta deja paso a la capa de conducir.
 		var activo0 := _coche_activo
@@ -17551,7 +17678,73 @@ func _capturar_si_toca() -> void:
 			var nodo_r: Node3D = _tiles[clave_r].get("nodo")
 			if nodo_r != null and is_instance_valid(nodo_r):
 				nodo_r.visible = true
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok)
+		# Tanda 35: dos dedos a la vez (gas + volante en el
+		# coche; cruceta en diagonal a pie): lo que la
+		# emulación de ratón de los botones no sabía hacer.
+		var toque_ok := true
+		_en_coche = true
+		_refrescar_tactil()
+		await get_tree().process_frame
+		var r_der2: Rect2 = _btn_der.get_global_rect()
+		var r_gas2: Rect2 = _btn_gas.get_global_rect()
+		if r_der2.size.x <= 0.0 or r_gas2.size.x <= 0.0:
+			toque_ok = false
+		else:
+			var t1 := InputEventScreenTouch.new()
+			t1.index = 0
+			t1.position = r_gas2.get_center()
+			t1.pressed = true
+			_input(t1)
+			var t2 := InputEventScreenTouch.new()
+			t2.index = 1
+			t2.position = r_der2.get_center()
+			t2.pressed = true
+			_input(t2)
+			toque_ok = _toque_gas and _toque_giro > 0.5
+			var t3 := InputEventScreenTouch.new()
+			t3.index = 1
+			t3.position = r_der2.get_center()
+			t3.pressed = false
+			_input(t3)
+			toque_ok = toque_ok and _toque_giro == 0.0 and _toque_gas
+			var t4 := InputEventScreenTouch.new()
+			t4.index = 0
+			t4.position = r_gas2.get_center()
+			t4.pressed = false
+			_input(t4)
+			toque_ok = toque_ok and not _toque_gas
+		_en_coche = false
+		_refrescar_tactil()
+		await get_tree().process_frame
+		var r_arr2: Rect2 = _btn_arriba.get_global_rect()
+		var r_dch2: Rect2 = _btn_derp.get_global_rect()
+		if r_arr2.size.x <= 0.0 or r_dch2.size.x <= 0.0:
+			toque_ok = false
+		else:
+			var t5 := InputEventScreenTouch.new()
+			t5.index = 2
+			t5.position = r_arr2.get_center()
+			t5.pressed = true
+			_input(t5)
+			var diag_ok: bool = _toque_andar == Vector2(0, -1)
+			var t6 := InputEventScreenTouch.new()
+			t6.index = 3
+			t6.position = r_dch2.get_center()
+			t6.pressed = true
+			_input(t6)
+			diag_ok = diag_ok and _toque_andar.x > 0.6 and _toque_andar.y < -0.6
+			var t7 := InputEventScreenTouch.new()
+			t7.index = 2
+			t7.position = r_arr2.get_center()
+			t7.pressed = false
+			_input(t7)
+			var t8 := InputEventScreenTouch.new()
+			t8.index = 3
+			t8.position = r_dch2.get_center()
+			t8.pressed = false
+			_input(t8)
+			toque_ok = toque_ok and diag_ok and _toque_andar == Vector2.ZERO
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok and toque_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok, " toque=", toque_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
