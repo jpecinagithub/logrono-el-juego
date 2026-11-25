@@ -4311,11 +4311,14 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	# menú del teléfono y enseña fps, ms de frame, llamadas de
 	# dibujo y objetos, para medir en el propio móvil.
 	_pill_stats = PanelContainer.new()
-	_pill_stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_pill_stats.offset_left = 14
-	_pill_stats.offset_top = 98
-	_pill_stats.offset_right = 486
-	_pill_stats.offset_bottom = 146
+	# Abajo en el centro, entre la cruceta/volante y los
+	# pedales: arriba quedaba pegada al letrero del día y no
+	# se leía bien (Jon, 2026-11-25).
+	_pill_stats.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_pill_stats.offset_left = -270
+	_pill_stats.offset_top = -172
+	_pill_stats.offset_right = 270
+	_pill_stats.offset_bottom = -124
 	var est_st := _estilo_caja(Color(0.10, 0.10, 0.12, 0.85), 24)
 	est_st.content_margin_left = 16
 	est_st.content_margin_right = 16
