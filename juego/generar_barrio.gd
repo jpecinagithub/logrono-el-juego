@@ -105,6 +105,7 @@ var _lbl_stats: Label = null
 var _btn_stats_tel: Button = null
 var _stats_on := false
 var _t_stats := 0.0
+var _t_vis := 0.0
 var _btn_izq: Button = null
 var _btn_der: Button = null
 var _capa_pie: Control = null
@@ -3206,10 +3207,22 @@ func _construir_tile(t: Vector2i, inmediato := true) -> void:
 		if ar != null:
 			cont.add_child(ar)
 		_aparcados_tile(cont, datos.get("c", []), datos.get("d", []))
+		if not inmediato:
+			# Plan de rendimiento R2: el bloque final (coches,
+			# lugares, locales e hitos) también se reparte en
+			# fotogramas; antes caía entero en un solo frame y
+			# era el pico que quedaba al cruzar de zona.
+			await get_tree().process_frame
+			if not is_instance_valid(cont):
+				return
 		_pois_tile(cont, datos.get("p", []))
 		_rotulos_tile_actual = []
 		_locales_tile(cont, datos.get("l", []))
 		_rotulos_datos[clave] = _rotulos_tile_actual
+		if not inmediato:
+			await get_tree().process_frame
+			if not is_instance_valid(cont):
+				return
 		_hitos_tile(cont, t)
 	if inmediato:
 		add_child(cont)
@@ -6528,6 +6541,10 @@ func _physics_process(delta: float) -> void:
 		if _t_stats >= 0.25:
 			_t_stats = 0.0
 			_actualizar_stats()
+	_t_vis += delta
+	if _t_vis >= 0.3:
+		_t_vis = 0.0
+		_refrescar_visibilidad_personas()
 	if _modo_libre and not _auto and _et_calle != null:
 		_t_calle += delta
 		if _t_calle > 0.3:
@@ -9708,6 +9725,38 @@ func _actualizar_stats() -> void:
 	var dc: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var ob: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
 	_lbl_stats.text = str(Engine.get_frames_per_second()) + " fps · " + str(snappedf(ms, 0.1)) + " ms · " + str(dc) + " dibujos · " + str(ob) + " objetos"
+
+func _refrescar_visibilidad_personas() -> void:
+	# Plan de rendimiento R4 (censo del 2026-11-25: la ciudad
+	# fundida son solo 144 mallas; el coste son las ~130
+	# personas a 6 mallas cada una, presentes en todo el
+	# mapa). A más de 180 m una persona son unos pocos
+	# píxeles: no se dibuja y se ahorran cientos de llamadas
+	# por frame. La lógica no se toca (siguen andando y
+	# viviendo); al acercarse reaparecen. Los personajes de
+	# la historia NO entran aquí: su visible es estado del
+	# sistema de escoltas.
+	var ancla: Vector3 = _coche.position if _en_coche else _jugador.position
+	for p in _peatones:
+		var r: Node3D = p.get("raiz")
+		if r != null and is_instance_valid(r):
+			r.visible = ancla.distance_squared_to(r.position) < 32400.0
+	for e in _estaticos:
+		var r2: Node3D = e.get("raiz")
+		if r2 != null and is_instance_valid(r2):
+			r2.visible = ancla.distance_squared_to(r2.position) < 32400.0
+	for s in _skaters:
+		var r3: Node3D = s.get("raiz")
+		if r3 != null and is_instance_valid(r3):
+			r3.visible = ancla.distance_squared_to(r3.position) < 32400.0
+	for pe in _perros:
+		var r4: Node3D = pe.get("raiz")
+		if r4 != null and is_instance_valid(r4):
+			r4.visible = ancla.distance_squared_to(r4.position) < 32400.0
+	for pa in _pajaros:
+		var r5: Node3D = pa.get("raiz")
+		if r5 != null and is_instance_valid(r5):
+			r5.visible = ancla.distance_squared_to(r5.position) < 32400.0
 
 func _crear_tactil() -> void:
 	_capa_tactil = CanvasLayer.new()
@@ -15686,6 +15735,44 @@ func _banco_rendimiento() -> void:
 	print("REND_OK")
 	get_tree().quit()
 
+func _contar_labels(n: Node) -> int:
+	var c := 0
+	if n is Label3D:
+		c += 1
+	for h in n.get_children():
+		c += _contar_labels(h)
+	return c
+
+func _banco_censo() -> void:
+	# Censo R4: cuántas mallas cuelgan de cada sistema en la
+	# zona densa (Espolón), para saber qué come los dibujos.
+	var zx := -260.0
+	var zz := 255.0
+	_jugador.position = Vector3(zx, _altura(zx, zz) + 0.95, zz)
+	var espera := 0
+	while espera < 900 and (not _cola_tiles.is_empty() or not _tiles.has(_clave_tile(_tile_de(Vector2(zx, zz))))):
+		await get_tree().physics_frame
+		espera += 1
+	var total := _contar_mallas(self)
+	var en_tiles := 0
+	for clave in _tiles.keys():
+		var nodo: Node = _tiles[clave].get("nodo")
+		if nodo != null:
+			en_tiles += _contar_mallas(nodo)
+	var por_peaton := 0
+	if not _peatones.is_empty():
+		por_peaton = _contar_mallas(_peatones[0]["raiz"])
+	var por_estatico := 0
+	if not _estaticos.is_empty():
+		por_estatico = _contar_mallas(_estaticos[0]["raiz"])
+	var por_coche := 0
+	if not _trafico.is_empty():
+		por_coche = _contar_mallas(_trafico[0]["nodo3d"])
+	print("CENSO total=", total, " tiles=", en_tiles, " fuera=", total - en_tiles, " labels=", _contar_labels(self))
+	print("CENSO peaton=", por_peaton, " x", _peatones.size(), " estatico=", por_estatico, " x", _estaticos.size(), " coche=", por_coche, " x", _trafico.size(), " jugador=", _contar_mallas(_jugador), " perros=", _perros.size(), " pajaros=", _pajaros.size())
+	print("CENSO_OK")
+	get_tree().quit()
+
 func _capturar_si_toca() -> void:
 	var args := OS.get_cmdline_user_args()
 	if not args.is_empty():
@@ -15707,6 +15794,9 @@ func _capturar_si_toca() -> void:
 		return
 	elif args.has("rendimiento"):
 		_banco_rendimiento()
+		return
+	elif args.has("censo"):
+		_banco_censo()
 		return
 	elif args.has("capturar_colegio"):
 		# La puerta del Colegio Las Gaunas desde la calle: el
@@ -17318,7 +17408,21 @@ func _capturar_si_toca() -> void:
 		_actualizar_stats()
 		var stats_ok: bool = _stats_on and _pill_stats != null and _pill_stats.visible and _lbl_stats != null and _lbl_stats.text != ""
 		_alternar_stats()
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok)
+		# R4: una persona a 1 km no se dibuja; al lado, sí.
+		var vis_ok := true
+		if not _estaticos.is_empty():
+			var r0: Node3D = _estaticos[0].get("raiz")
+			if r0 != null and is_instance_valid(r0):
+				var pos_j := _jugador.position
+				_jugador.position = r0.position + Vector3(1000.0, 0.0, 0.0)
+				_refrescar_visibilidad_personas()
+				var lejos_ok: bool = not r0.visible
+				_jugador.position = r0.position
+				_refrescar_visibilidad_personas()
+				vis_ok = lejos_ok and r0.visible
+				_jugador.position = pos_j
+				_refrescar_visibilidad_personas()
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
