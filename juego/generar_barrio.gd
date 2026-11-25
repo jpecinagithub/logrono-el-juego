@@ -4324,9 +4324,9 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	# pedales: arriba quedaba pegada al letrero del día y no
 	# se leía bien (Jon, 2026-11-25).
 	_pill_stats.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_pill_stats.offset_left = -270
+	_pill_stats.offset_left = -320
 	_pill_stats.offset_top = -172
-	_pill_stats.offset_right = 270
+	_pill_stats.offset_right = 320
 	_pill_stats.offset_bottom = -124
 	var est_st := _estilo_caja(Color(0.10, 0.10, 0.12, 0.85), 24)
 	est_st.content_margin_left = 16
@@ -9734,9 +9734,11 @@ func _actualizar_stats() -> void:
 	if _lbl_stats == null:
 		return
 	var ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var mf: float = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 	var dc: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var ob: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
-	_lbl_stats.text = str(Engine.get_frames_per_second()) + " fps · " + str(snappedf(ms, 0.1)) + " ms · " + str(dc) + " dibujos · " + str(ob) + " objetos"
+	var pr: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	_lbl_stats.text = str(Engine.get_frames_per_second()) + " fps · " + str(snappedf(ms, 0.1)) + " ms · fís " + str(snappedf(mf, 0.1)) + " · " + str(dc) + " dib · " + str(ob) + " obj · " + str(snappedf(float(pr) / 1000000.0, 0.1)) + " M tri"
 
 func _refrescar_visibilidad_personas() -> void:
 	# Plan de rendimiento R4 (censo del 2026-11-25: la ciudad
@@ -15734,6 +15736,7 @@ func _banco_rendimiento() -> void:
 		var dc_max := 0
 		var ob := 0.0
 		var ms := 0.0
+		var pr := 0.0
 		var n := 0
 		while n < 90:
 			await get_tree().physics_frame
@@ -15742,8 +15745,9 @@ func _banco_rendimiento() -> void:
 			dc_max = maxi(dc_max, d)
 			ob += Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
 			ms += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+			pr += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 			n += 1
-		print("REND zona=", String(zn[0]), " dibujos=", int(dc / 90.0), " max=", dc_max, " objetos=", int(ob / 90.0), " ms=", snappedf(ms / 90.0, 0.1))
+		print("REND zona=", String(zn[0]), " dibujos=", int(dc / 90.0), " max=", dc_max, " objetos=", int(ob / 90.0), " ms=", snappedf(ms / 90.0, 0.1), " tris=", int(pr / 90.0))
 	print("REND_OK")
 	get_tree().quit()
 
@@ -15753,6 +15757,16 @@ func _contar_labels(n: Node) -> int:
 		c += 1
 	for h in n.get_children():
 		c += _contar_labels(h)
+	return c
+
+func _tris_de(n: Node, top: Array) -> int:
+	var c := 0
+	if n is MeshInstance3D and n.mesh != null:
+		var t: int = int(n.mesh.get_faces().size() / 3)
+		c += t
+		top.append([t, n.get_aabb().size, n.global_position])
+	for h in n.get_children():
+		c += _tris_de(h, top)
 	return c
 
 func _banco_censo() -> void:
@@ -15782,6 +15796,20 @@ func _banco_censo() -> void:
 		por_coche = _contar_mallas(_trafico[0]["nodo3d"])
 	print("CENSO total=", total, " tiles=", en_tiles, " fuera=", total - en_tiles, " labels=", _contar_labels(self))
 	print("CENSO peaton=", por_peaton, " x", _peatones.size(), " estatico=", por_estatico, " x", _estaticos.size(), " coche=", por_coche, " x", _trafico.size(), " jugador=", _contar_mallas(_jugador), " perros=", _perros.size(), " pajaros=", _pajaros.size())
+	var top: Array = []
+	var tris_total := _tris_de(self, top)
+	var top_tiles: Array = []
+	var tris_tiles := 0
+	for clave in _tiles.keys():
+		var nodo2: Node = _tiles[clave].get("nodo")
+		if nodo2 != null:
+			tris_tiles += _tris_de(nodo2, top_tiles)
+	top.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) > int(b[0]))
+	var s := ""
+	for i in mini(6, top.size()):
+		s += " [" + str(int(top[i][0])) + " tris, tam " + str(top[i][1]) + ", en " + str(top[i][2]) + "]"
+	print("CENSO tris_total=", tris_total, " tris_tiles=", tris_tiles, " tris_fuera=", tris_total - tris_tiles)
+	print("CENSO top:", s)
 	print("CENSO_OK")
 	get_tree().quit()
 
