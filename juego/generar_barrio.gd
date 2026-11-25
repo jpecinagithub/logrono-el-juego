@@ -4145,16 +4145,22 @@ func _camara_y_luz() -> void:
 	_cam.look_at_from_position(Vector3(0, 900, 900), Vector3.ZERO, Vector3.UP)
 	add_child(_cam)
 	_cam.current = true
+	# Plan de rendimiento (cifras del móvil de Jon, 2026-11-25:
+	# 4 fps con solo 10,2 ms de proceso y 2.580 objetos: el
+	# cuello es el dibujo, no la lógica). En pantallas
+	# táctiles la cámara corta a 1.400 m en vez de a los
+	# 4.000 por defecto: lo que no se ve no se dibuja.
+	if DisplayServer.is_touchscreen_available():
+		_cam.far = 1400.0
 	var sol := DirectionalLight3D.new()
 	sol.rotation_degrees = Vector3(-50, -118, 0)
 	sol.light_color = Color(1.0, 0.97, 0.92)
 	sol.light_energy = 1.15
-	sol.shadow_enabled = true
-	# Plan de rendimiento R1: en el móvil, las sombras a 350 m
-	# obligan a redibujar media ciudad para el mapa de
-	# sombras; allí el alcance baja a 120 m. En escritorio y
-	# web se quedan los 350 m de siempre.
-	sol.directional_shadow_max_distance = 120.0 if DisplayServer.is_touchscreen_available() else 350.0
+	# Y las sombras se apagan en el móvil: su pasada redibuja
+	# la escena entera cada frame y es la mitad de los
+	# objetos contados. En escritorio y web se quedan puestas.
+	sol.shadow_enabled = not DisplayServer.is_touchscreen_available()
+	sol.directional_shadow_max_distance = 350.0
 	add_child(sol)
 	var entorno := WorldEnvironment.new()
 	var env := Environment.new()
@@ -4177,7 +4183,10 @@ func _camara_y_luz() -> void:
 	env.ambient_light_energy = 0.7
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.80, 0.86, 0.92)
-	env.fog_density = 0.00032
+	# En el móvil la niebla es más densa, para que el corte de
+	# la cámara a 1.400 m se disuelva en la bruma y no se vea
+	# el borde del mundo.
+	env.fog_density = 0.0009 if DisplayServer.is_touchscreen_available() else 0.00032
 	entorno.environment = env
 	add_child(entorno)
 	_nubes()
