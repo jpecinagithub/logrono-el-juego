@@ -106,6 +106,7 @@ var _btn_stats_tel: Button = null
 var _stats_on := false
 var _t_stats := 0.0
 var _t_vis := 0.0
+var _movil := false
 var _btn_izq: Button = null
 var _btn_der: Button = null
 var _capa_pie: Control = null
@@ -339,6 +340,7 @@ func _escalar_interfaz_movil() -> void:
 	# dibujar a esa tasa y se ahoga; 60 estables se juegan
 	# mejor que 90 a trompicones.
 	Engine.max_fps = 60
+	_movil = true
 	var w := get_tree().root
 	w.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
 	w.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
@@ -4148,10 +4150,10 @@ func _camara_y_luz() -> void:
 	# Plan de rendimiento (cifras del móvil de Jon, 2026-11-25:
 	# 4 fps con solo 10,2 ms de proceso y 2.580 objetos: el
 	# cuello es el dibujo, no la lógica). En pantallas
-	# táctiles la cámara corta a 1.400 m en vez de a los
+	# táctiles la cámara corta a 1.000 m en vez de a los
 	# 4.000 por defecto: lo que no se ve no se dibuja.
 	if DisplayServer.is_touchscreen_available():
-		_cam.far = 1400.0
+		_cam.far = 1000.0
 	var sol := DirectionalLight3D.new()
 	sol.rotation_degrees = Vector3(-50, -118, 0)
 	sol.light_color = Color(1.0, 0.97, 0.92)
@@ -4184,9 +4186,9 @@ func _camara_y_luz() -> void:
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.80, 0.86, 0.92)
 	# En el móvil la niebla es más densa, para que el corte de
-	# la cámara a 1.400 m se disuelva en la bruma y no se vea
+	# la cámara a 1.000 m se disuelva en la bruma y no se vea
 	# el borde del mundo.
-	env.fog_density = 0.0009 if DisplayServer.is_touchscreen_available() else 0.00032
+	env.fog_density = 0.0013 if DisplayServer.is_touchscreen_available() else 0.00032
 	entorno.environment = env
 	add_child(entorno)
 	_nubes()
@@ -6557,6 +6559,7 @@ func _physics_process(delta: float) -> void:
 	if _t_vis >= 0.3:
 		_t_vis = 0.0
 		_refrescar_visibilidad_personas()
+		_refrescar_visibilidad_tiles()
 	if _modo_libre and not _auto and _et_calle != null:
 		_t_calle += delta
 		if _t_calle > 0.3:
@@ -9771,6 +9774,30 @@ func _refrescar_visibilidad_personas() -> void:
 		var r5: Node3D = pa.get("raiz")
 		if r5 != null and is_instance_valid(r5):
 			r5.visible = ancla.distance_squared_to(r5.position) < 32400.0
+
+func _refrescar_visibilidad_tiles() -> void:
+	# Plan de rendimiento (móvil de Jon: realme 14T, Dimensity
+	# 6300, gráfica Mali-G57 de gama de entrada): solo en el
+	# móvil, las baldosas cuyo centro pase de 750 m no se
+	# dibujan. Siguen cargadas, con sus colisiones y su gente;
+	# es solo dibujo. Cada baldosa densa lleva 110.000-170.000
+	# triángulos de fachadas y su malla se procesa entera
+	# aunque solo se vea una esquina: las cuatro baldosas de
+	# las esquinas del 3x3 son la mitad larga de ese peso.
+	if not _movil:
+		return
+	var ancla: Vector3 = _coche.position if _en_coche else _jugador.position
+	for clave in _tiles.keys():
+		var ent: Dictionary = _tiles[clave]
+		var nodo: Node3D = ent.get("nodo")
+		if nodo == null or not is_instance_valid(nodo):
+			continue
+		var partes: PackedStringArray = String(clave).split(",")
+		var cx: float = CIUDAD_X0 + (float(int(partes[0])) + 0.5) * TILE_M
+		var cz: float = CIUDAD_Z0 + (float(int(partes[1])) + 0.5) * TILE_M
+		var dx: float = cx - ancla.x
+		var dz: float = cz - ancla.z
+		nodo.visible = dx * dx + dz * dz < 562500.0
 
 func _crear_tactil() -> void:
 	_capa_tactil = CanvasLayer.new()
@@ -17462,7 +17489,19 @@ func _capturar_si_toca() -> void:
 				vis_ok = lejos_ok and r0.visible
 				_jugador.position = pos_j
 				_refrescar_visibilidad_personas()
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok)
+		# Tanda 32: con _movil forzado, la baldosa del jugador
+		# queda visible tras la pasada de visibilidad.
+		_movil = true
+		_refrescar_visibilidad_tiles()
+		var propia: Dictionary = _tiles.get(_clave_tile(_tile_de(Vector2(_jugador.position.x, _jugador.position.z))), {})
+		var nodo_p: Node3D = propia.get("nodo")
+		var tiles_ok: bool = nodo_p == null or nodo_p.visible
+		_movil = false
+		for clave_r in _tiles.keys():
+			var nodo_r: Node3D = _tiles[clave_r].get("nodo")
+			if nodo_r != null and is_instance_valid(nodo_r):
+				nodo_r.visible = true
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
