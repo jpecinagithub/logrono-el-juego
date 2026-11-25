@@ -340,6 +340,13 @@ func _escalar_interfaz_movil() -> void:
 	# dibujar a esa tasa y se ahoga; 60 estables se juegan
 	# mejor que 90 a trompicones.
 	Engine.max_fps = 60
+	# R3: la física baja a 30 pasos/s en el móvil y nunca
+	# más de 4 pasos por frame. Con pasos de 63,7 ms
+	# medidos, a 60 pasos/s el motor entraba en la espiral
+	# de ponerse al día y se comía el frame entero; a 30 y
+	# con tope, un paso largo ralentiza un instante y ya.
+	Engine.physics_ticks_per_second = 30
+	Engine.max_physics_steps_per_frame = 4
 	_movil = true
 	var w := get_tree().root
 	w.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
@@ -10136,14 +10143,18 @@ func _mover_trafico(delta: float) -> void:
 			var to_c := Vector2(_coche.position.x - coche.position.x, _coche.position.z - coche.position.z)
 			if to_c.length() < 8.5 and to_c.length() > 0.01 and dir.dot(to_c / to_c.length()) > 0.55:
 				vel_obj = 0.0
-		if vel_obj > 0.0:
+		# R3: un coche a más de 250 m del jugador no necesita
+		# mirar si lleva peatones delante: nadie lo ve frenar.
+		var ancla_t: Vector3 = _coche.position if _en_coche else _jugador.position
+		var cerca_t: bool = Vector2(ancla_t.x - coche.position.x, ancla_t.z - coche.position.z).length_squared() < 62500.0
+		if vel_obj > 0.0 and cerca_t:
 			for peat_t in _peatones:
 				var rp_t: Node3D = peat_t["raiz"]
 				var to_p := Vector2(rp_t.position.x - coche.position.x, rp_t.position.z - coche.position.z)
 				if to_p.length() < 7.5 and to_p.length() > 0.01 and dir.dot(to_p / to_p.length()) > 0.55:
 					vel_obj = 0.0
 					break
-		if vel_obj > 0.0:
+		if vel_obj > 0.0 and cerca_t:
 			for est_t in _estaticos:
 				var re_t: Node3D = est_t["raiz"]
 				var to_e := Vector2(re_t.position.x - coche.position.x, re_t.position.z - coche.position.z)
@@ -14242,6 +14253,17 @@ func _actualizar_columpio(_delta: float) -> void:
 func _mover_peatones(delta: float) -> void:
 	for peat in _peatones:
 		var raiz: Node3D = peat["raiz"]
+		# R3 (física a 63,7 ms por paso en el móvil de Jon):
+		# el peatón que no se ve se mueve a saltos de 0,1 s
+		# acumulados; el visible, cada paso como siempre.
+		var d_p: float = delta
+		if not raiz.visible:
+			var acum_p: float = float(peat.get("dtp", 0.0)) + delta
+			if acum_p < 0.1:
+				peat["dtp"] = acum_p
+				continue
+			d_p = acum_p
+			peat["dtp"] = 0.0
 		var dest: Vector3 = peat["destino"]
 		var hacia := Vector2(dest.x - raiz.position.x, dest.z - raiz.position.z)
 		if hacia.length() < 0.7:
@@ -14256,7 +14278,7 @@ func _mover_peatones(delta: float) -> void:
 			continue
 		var dir := hacia / hacia.length()
 		var vel := float(peat["vel"])
-		var paso_p := dir * vel * delta
+		var paso_p := dir * vel * d_p
 		var base_pp := Vector2(raiz.position.x, raiz.position.z)
 		for ang_p in [0.0, 0.7, -0.7, 1.4, -1.4]:
 			var cand_p := base_pp + paso_p.rotated(ang_p)
@@ -14266,7 +14288,7 @@ func _mover_peatones(delta: float) -> void:
 				break
 		raiz.position.y = _altura(raiz.position.x, raiz.position.z) + 0.95
 		raiz.rotation.y = atan2(dir.x, dir.y)
-		peat["fase"] = float(peat["fase"]) + delta * 8.0
+		peat["fase"] = float(peat["fase"]) + d_p * 8.0
 		var a := sin(float(peat["fase"])) * 0.5
 		var d: Dictionary = peat["d"]
 		(d["pi"] as Node3D).rotation.x = a
@@ -14290,6 +14312,12 @@ func _mover_peatones(delta: float) -> void:
 		var raiz_e: Node3D = est["raiz"]
 		if not est.has("y0"):
 			est["y0"] = raiz_e.position.y
+		# R3: la animación de un estático es función del
+		# tiempo absoluto (_tiempo): si no se ve, se salta
+		# entera, y al volver a verse está en su postura
+		# exacta, sin deriva.
+		if not raiz_e.visible:
+			continue
 		# Respiración: nadie está clavado; el cuerpo sube y baja un poco
 		raiz_e.position.y = float(est["y0"]) + sin(_tiempo * 1.5 + f2) * 0.012
 		var cab_e: Node3D = d2["cabeza"]
@@ -17489,6 +17517,19 @@ func _capturar_si_toca() -> void:
 				vis_ok = lejos_ok and r0.visible
 				_jugador.position = pos_j
 				_refrescar_visibilidad_personas()
+		# R3: un peatón invisible acumula su delta en un
+		# paso en vez de moverse.
+		var fis_ok := true
+		if not _peatones.is_empty():
+			var p0: Dictionary = _peatones[0]
+			var r_p0: Node3D = p0["raiz"]
+			var vis_p0: bool = r_p0.visible
+			r_p0.visible = false
+			p0.erase("dtp")
+			_mover_peatones(0.016)
+			fis_ok = is_equal_approx(float(p0.get("dtp", 0.0)), 0.016)
+			r_p0.visible = vis_p0
+			p0.erase("dtp")
 		# Tanda 32: con _movil forzado, la baldosa del jugador
 		# queda visible tras la pasada de visibilidad.
 		_movil = true
@@ -17501,7 +17542,7 @@ func _capturar_si_toca() -> void:
 			var nodo_r: Node3D = _tiles[clave_r].get("nodo")
 			if nodo_r != null and is_instance_valid(nodo_r):
 				nodo_r.visible = true
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok)
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok and vis_ok and tiles_ok and fis_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok, " vis=", vis_ok, " tiles=", tiles_ok, " fis=", fis_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
