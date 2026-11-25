@@ -100,6 +100,11 @@ var _capa_conducir: Control = null
 var _btn_gas: Button = null
 var _btn_freno: Button = null
 var _barra_pedales: PanelContainer = null
+var _pill_stats: PanelContainer = null
+var _lbl_stats: Label = null
+var _btn_stats_tel: Button = null
+var _stats_on := false
+var _t_stats := 0.0
 var _btn_izq: Button = null
 var _btn_der: Button = null
 var _capa_pie: Control = null
@@ -328,6 +333,11 @@ func _escalar_interfaz_movil() -> void:
 	# menos píxeles, con la interfaz igual de nítida en pantalla.
 	if not DisplayServer.is_touchscreen_available():
 		return
+	# Plan de rendimiento R1: tope de 60 fps en el móvil. Si la
+	# pantalla es de 90/120 Hz, sin tope el juego intenta
+	# dibujar a esa tasa y se ahoga; 60 estables se juegan
+	# mejor que 90 a trompicones.
+	Engine.max_fps = 60
 	var w := get_tree().root
 	w.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
 	w.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
@@ -4127,7 +4137,11 @@ func _camara_y_luz() -> void:
 	sol.light_color = Color(1.0, 0.97, 0.92)
 	sol.light_energy = 1.15
 	sol.shadow_enabled = true
-	sol.directional_shadow_max_distance = 350.0
+	# Plan de rendimiento R1: en el móvil, las sombras a 350 m
+	# obligan a redibujar media ciudad para el mapa de
+	# sombras; allí el alcance baja a 120 m. En escritorio y
+	# web se quedan los 350 m de siempre.
+	sol.directional_shadow_max_distance = 120.0 if DisplayServer.is_touchscreen_available() else 350.0
 	add_child(sol)
 	var entorno := WorldEnvironment.new()
 	var env := Environment.new()
@@ -4280,6 +4294,26 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	_et_calle.text = ""
 	pill.add_child(_et_calle)
 	capa.add_child(pill)
+	# Contador de rendimiento (plan R0): se enciende desde el
+	# menú del teléfono y enseña fps, ms de frame, llamadas de
+	# dibujo y objetos, para medir en el propio móvil.
+	_pill_stats = PanelContainer.new()
+	_pill_stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_pill_stats.offset_left = 14
+	_pill_stats.offset_top = 98
+	_pill_stats.offset_right = 486
+	_pill_stats.offset_bottom = 146
+	var est_st := _estilo_caja(Color(0.10, 0.10, 0.12, 0.85), 24)
+	est_st.content_margin_left = 16
+	est_st.content_margin_right = 16
+	_pill_stats.add_theme_stylebox_override("panel", est_st)
+	_lbl_stats = Label.new()
+	_lbl_stats.add_theme_font_size_override("font_size", 22)
+	_lbl_stats.add_theme_color_override("font_color", Color(1, 1, 1))
+	_lbl_stats.text = ""
+	_pill_stats.add_child(_lbl_stats)
+	_pill_stats.visible = false
+	capa.add_child(_pill_stats)
 	# Botón del teléfono (arriba a la izquierda): encargos y mapa
 	var tel := Button.new()
 	tel.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -4388,6 +4422,11 @@ func _crear_hud(capa: CanvasLayer) -> void:
 	b_ayu.add_theme_font_size_override("font_size", 21)
 	b_ayu.pressed.connect(func() -> void: _desde_tel(_t_ayuda))
 	vm.add_child(b_ayu)
+	_btn_stats_tel = Button.new()
+	_btn_stats_tel.text = "Rendimiento: no"
+	_btn_stats_tel.add_theme_font_size_override("font_size", 21)
+	_btn_stats_tel.pressed.connect(func() -> void: _desde_tel(_alternar_stats))
+	vm.add_child(_btn_stats_tel)
 	_btn_personaje_tel = Button.new()
 	_btn_personaje_tel.text = "Personaje: chica" if _personaje == 1 else "Personaje: chico"
 	_btn_personaje_tel.add_theme_font_size_override("font_size", 21)
@@ -6484,6 +6523,11 @@ func _physics_process(delta: float) -> void:
 		if _t_mini >= 0.15:
 			_t_mini = 0.0
 			_minimapa.call("actualizar", _datos_minimapa())
+	if _stats_on and _lbl_stats != null:
+		_t_stats += delta
+		if _t_stats >= 0.25:
+			_t_stats = 0.0
+			_actualizar_stats()
 	if _modo_libre and not _auto and _et_calle != null:
 		_t_calle += delta
 		if _t_calle > 0.3:
@@ -9647,6 +9691,23 @@ func _boton_pad(texto: String, pos: Vector2) -> Button:
 	b.add_theme_stylebox_override("focus", _estilo_caja(Color(0, 0, 0, 0), 44))
 	_pad_pie.add_child(b)
 	return b
+
+func _alternar_stats() -> void:
+	_stats_on = not _stats_on
+	if _pill_stats != null:
+		_pill_stats.visible = _stats_on
+	if _btn_stats_tel != null:
+		_btn_stats_tel.text = "Rendimiento: sí" if _stats_on else "Rendimiento: no"
+	if _stats_on:
+		_actualizar_stats()
+
+func _actualizar_stats() -> void:
+	if _lbl_stats == null:
+		return
+	var ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var dc: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var ob: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+	_lbl_stats.text = str(Engine.get_frames_per_second()) + " fps · " + str(snappedf(ms, 0.1)) + " ms · " + str(dc) + " dibujos · " + str(ob) + " objetos"
 
 func _crear_tactil() -> void:
 	_capa_tactil = CanvasLayer.new()
@@ -15591,6 +15652,40 @@ func _probar_interiores() -> void:
 	print("INTERIORES_PRUEBA_OK pasa=", pasa, " tenderos=", hay_tenderos, " ofrecio=", ofrecio, " cobro=", cobro_t, " teclas=", teclas)
 	get_tree().quit()
 
+func _banco_rendimiento() -> void:
+	# Banco R0 del plan de rendimiento: muestrea los monitores
+	# de Godot en tres zonas con el streaming ya asentado y
+	# deja las cifras en el log (REND zona=...). En el banco
+	# de escritorio el ms va con SwiftShader y no representa
+	# al móvil; los dibujos y los objetos sí son los de la
+	# escena real, y sirven de base para la Tanda R4.
+	var zonas: Array = [["espolon", -260.0, 255.0], ["granvia", -100.0, 62.0], ["gaunas", -864.0, 1500.0]]
+	for zn in zonas:
+		var zx: float = float(zn[1])
+		var zz: float = float(zn[2])
+		_jugador.position = Vector3(zx, _altura(zx, zz) + 0.95, zz)
+		_jugador.rotation.y = 0.0
+		var espera := 0
+		while espera < 900 and (not _cola_tiles.is_empty() or not _tiles.has(_clave_tile(_tile_de(Vector2(zx, zz))))):
+			await get_tree().physics_frame
+			espera += 1
+		var dc := 0.0
+		var dc_max := 0
+		var ob := 0.0
+		var ms := 0.0
+		var n := 0
+		while n < 90:
+			await get_tree().physics_frame
+			var d: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+			dc += float(d)
+			dc_max = maxi(dc_max, d)
+			ob += Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+			ms += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+			n += 1
+		print("REND zona=", String(zn[0]), " dibujos=", int(dc / 90.0), " max=", dc_max, " objetos=", int(ob / 90.0), " ms=", snappedf(ms / 90.0, 0.1))
+	print("REND_OK")
+	get_tree().quit()
+
 func _capturar_si_toca() -> void:
 	var args := OS.get_cmdline_user_args()
 	if not args.is_empty():
@@ -15609,6 +15704,9 @@ func _capturar_si_toca() -> void:
 			_comprobar_radares()
 			print("RADAR_OK multa=", antes_r - _dinero)
 		get_tree().quit()
+		return
+	elif args.has("rendimiento"):
+		_banco_rendimiento()
 		return
 	elif args.has("capturar_colegio"):
 		# La puerta del Colegio Las Gaunas desde la calle: el
@@ -17216,7 +17314,11 @@ func _capturar_si_toca() -> void:
 		_en_coche = false
 		_refrescar_tactil()
 		bici_ok = bici_ok and _btn_gas.text == "▲ GAS"
-		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok)
+		_alternar_stats()
+		_actualizar_stats()
+		var stats_ok: bool = _stats_on and _pill_stats != null and _pill_stats.visible and _lbl_stats != null and _lbl_stats.text != ""
+		_alternar_stats()
+		print("TACTIL_PRUEBA_OK pasa=", pie_ok and coche_ok and gas_ok and pie_btn_ok and andar_ok and bici_ok and pedales_ok and stats_ok, " pie=", pie_ok, " coche=", coche_ok, " gas=", gas_ok, " cruceta=", pie_btn_ok and andar_ok, " bici=", bici_ok, " pedales=", pedales_ok, " stats=", stats_ok)
 		_refrescar_rotulos()
 		var rot_ok := not _rotulos_activos.is_empty()
 		# Cada rotulo activo tiene que llevar el pixel_size de
